@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { SeededRandomSource, StubRandomSource } from '../rng';
 import {
   Board,
   CornerCoord,
   Direction,
   FLOWER_COLORS,
   FlowerColor,
+  Game,
   GridCoord,
   PondTile,
   TileCatalog,
@@ -286,5 +288,93 @@ describe('src/game', () => {
     expect(board.placedBlooms).toHaveLength(1);
     expect(board.bloomAt(new CornerCoord(0, 0))).toBe('white');
     expect(() => board.placeBloom({ corner: new CornerCoord(0, 0), color: 'blue' })).toThrow();
+  });
+
+  const makeOrderedGame = (frontIds: readonly number[]): Game => {
+    const all = TileCatalog.defaultCatalog().tiles;
+    const frontSet = new Set(frontIds);
+    const ordered = [...frontIds.map((id) => all[id]!), ...all.filter((t) => !frontSet.has(t.id))];
+    const catalog = new TileCatalog(ordered.map((t) => t.baseEdges));
+    return Game.create(new StubRandomSource(Array.from({ length: 27 }, () => 0.9999)), catalog);
+  };
+
+  it('GAME-12: Game.create shuffles deck, places initial tile at (0,0), draws currentTile, and exposes fair unseenTiles', () => {
+    const game = Game.create(new SeededRandomSource(7));
+    expect(game.board.placedTileCount).toBe(1);
+    const initial = game.board.tileAt(new GridCoord(0, 0))!.tile;
+    expect(game.currentTile).not.toBeNull();
+    expect(game.currentTile!.id).not.toBe(initial.id);
+    expect(game.remainingDrawCount).toBe(26);
+    expect(game.unseenTiles).toHaveLength(26);
+    expect(game.unseenTiles.some((t) => t.id === initial.id || t.id === game.currentTile!.id)).toBe(false);
+    expect(game.unplayedFlowers.size).toBe(8);
+    expect(game.discardedTiles).toEqual([]);
+    expect(game.turnNumber).toBe(0);
+    expect(game.isComplete).toBe(false);
+  });
+
+  const setupTwoCornerGame = (extraIds: readonly number[] = []): Game => {
+    const game = makeOrderedGame([0, 1, 27, 2, 10, 26, ...extraIds]);
+    game.applyMove({ coord: new GridCoord(1, 0), rotation: 3 });
+    game.applyMove({ coord: new GridCoord(2, 0), rotation: 0 });
+    game.applyMove({ coord: new GridCoord(0, 1), rotation: 3 });
+    game.applyMove({ coord: new GridCoord(2, 1), rotation: 3 });
+    return game;
+  };
+
+  it('GAME-13: Game.applyMove places tiles, resolves single/simultaneous blooms, and updates turn/unseen state', () => {
+    const game = setupTwoCornerGame();
+    const p = { coord: new GridCoord(1, 1), rotation: 2 as const };
+    expect(game.eligibleBloomsFor(p).map((c) => c.corner.key).sort()).toEqual(['0,0', '1,0']);
+
+    const outcome = game.applyMove(p, [
+      { corner: new CornerCoord(0, 0), color: 'pink' },
+      { corner: new CornerCoord(1, 0), color: 'red' },
+    ]);
+    expect(outcome.kind).toBe('placed');
+    expect(game.board.placedBloomCount).toBe(2);
+    expect(game.unplayedFlowers.has('pink')).toBe(false);
+    expect(game.unplayedFlowers.has('red')).toBe(false);
+    expect(game.turnNumber).toBe(5);
+    expect(game.remainingDrawCount).toBe(21);
+    expect(game.unseenTiles).toHaveLength(21);
+  });
+
+  it('GAME-14: Game.applyMove enforces bloom validity and allows unbloomed corner only when 0 eligible colors remain', () => {
+    const game = setupTwoCornerGame([6, 14]);
+    const p = { coord: new GridCoord(1, 1), rotation: 2 as const };
+    expect(() => game.applyMove(p, [])).toThrow();
+    expect(() => game.applyMove(p, [{ corner: new CornerCoord(0, 0), color: 'pink' }])).toThrow();
+    expect(() => game.applyMove(p, [
+      { corner: new CornerCoord(0, 0), color: 'pink' }, { corner: new CornerCoord(1, 0), color: 'pink' },
+    ])).toThrow();
+    expect(() => game.applyMove(p, [
+      { corner: new CornerCoord(5, 5), color: 'pink' }, { corner: new CornerCoord(1, 0), color: 'red' },
+    ])).toThrow();
+
+    game.applyMove(p, [
+      { corner: new CornerCoord(0, 0), color: 'pink' }, { corner: new CornerCoord(1, 0), color: 'red' },
+    ]);
+    game.applyMove({ coord: new GridCoord(3, 0), rotation: 0 });
+    const dead = { coord: new GridCoord(3, 1), rotation: 1 as const };
+    expect(game.eligibleBloomsFor(dead)).toEqual([{ corner: new CornerCoord(2, 0), eligibleColors: [] }]);
+    expect(() => game.applyMove(dead, [{ corner: new CornerCoord(2, 0), color: 'pink' }])).toThrow();
+    expect(game.applyMove(dead, []).kind).toBe('placed');
+    expect(game.board.bloomAt(new CornerCoord(2, 0))).toBeUndefined();
+  });
+
+  it('GAME-15: Game.discardCurrentTile discards unplaceable tile and throws when valid placements exist', () => {
+    const placeable = makeOrderedGame([0, 1]);
+    expect(placeable.validPlacements.length).toBeGreaterThan(0);
+    expect(() => placeable.discardCurrentTile()).toThrow();
+
+    const unplaceable = makeOrderedGame([0, 27]);
+    expect(unplaceable.validPlacements).toEqual([]);
+    const drawn = unplaceable.currentTile!;
+    const out = unplaceable.discardCurrentTile();
+    expect(out).toEqual({ kind: 'discarded', tile: drawn });
+    expect(unplaceable.discardedTiles).toEqual([drawn]);
+    expect(unplaceable.turnNumber).toBe(1);
+    expect(unplaceable.remainingDrawCount).toBe(25);
   });
 });

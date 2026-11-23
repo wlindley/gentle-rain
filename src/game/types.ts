@@ -68,3 +68,17 @@ export interface PlacementPreview {
   readonly affectedFrontierConstraints: readonly FrontierConstraint[];
   readonly neighborCount: number;
 }
+
+export interface PendingCornerBloom {
+  readonly corner: CornerCoord;
+  readonly eligibleColors: readonly FlowerColor[];
+}
+
+export type TurnOutcome =
+  | {
+      readonly kind: 'placed';
+      readonly tile: PondTile;
+      readonly placement: TilePlacement;
+      readonly blooms: readonly BloomPlacement[];
+    }
+  | { readonly kind: 'discarded'; readonly tile: PondTile };
