@@ -4,8 +4,17 @@ import { CornerCoord, FLOWER_COLORS, Game, GameResult } from '../game';
 import type { FlowerColor } from '../game';
 import { SeededRandomSource } from '../rng';
 import { GameRunner, SimulationStats } from '../simulation';
-import { computeFitness, describeGenome, evaluateGenome, EvolvedBot, GENE_SPECS, Genome } from './index';
-import type { GeneWeights } from './index';
+import {
+  computeFitness,
+  DEFAULT_GA_CONFIG,
+  describeGenome,
+  evaluateGenome,
+  EvolvedBot,
+  GENE_SPECS,
+  GeneticAlgorithm,
+  Genome,
+} from './index';
+import type { GenomeEvaluation, GeneWeights } from './index';
 
 describe('src/evolution', () => {
   it('EVO-01: Genome validates/clamps 20 gene weights, seeds deterministically, and round-trips JSON', () => {
@@ -164,5 +173,75 @@ describe('src/evolution', () => {
     const summaryC = describeGenome(contrast);
     expect(summaryC.headline).not.toBe(summaryH.headline);
     expect(summaryC.bullets).not.toEqual(summaryH.bullets);
+  });
+
+  it('EVO-05: GeneticAlgorithm validates config and builds warm-start or random initial populations', () => {
+    expect(DEFAULT_GA_CONFIG.populationSize).toBe(24);
+    expect(DEFAULT_GA_CONFIG.gamesPerGenome).toBe(5000);
+
+    const gaWarm = new GeneticAlgorithm({ populationSize: 6, gamesPerGenome: 10, eliteCount: 2, immigrantCount: 1 });
+    const popWarm = gaWarm.createInitialPopulation(new SeededRandomSource(11));
+    expect(popWarm).toHaveLength(6);
+    expect(popWarm.every((g) => g.generation === 1)).toBe(true);
+    expect(popWarm[0]!.weights).toEqual(Genome.heuristicSeed().weights);
+    expect(popWarm[1]!.weights).toEqual(Genome.greedySeed().weights);
+
+    const gaCold = new GeneticAlgorithm({ populationSize: 6, gamesPerGenome: 10, warmStart: false });
+    const popCold = gaCold.createInitialPopulation(new SeededRandomSource(11));
+    expect(popCold).toHaveLength(6);
+    expect(popCold[0]!.weights).not.toEqual(Genome.heuristicSeed().weights);
+
+    expect(() => new GeneticAlgorithm({ populationSize: 3 })).toThrow();
+    expect(() => new GeneticAlgorithm({ gamesPerGenome: 0 })).toThrow();
+    expect(() => new GeneticAlgorithm({ eliteCount: 0 })).toThrow();
+    expect(() => new GeneticAlgorithm({ populationSize: 4, eliteCount: 3, immigrantCount: 2 })).toThrow();
+    expect(() => new GeneticAlgorithm({ tournamentSize: 1 })).toThrow();
+    expect(() => new GeneticAlgorithm({ crossoverRate: 1.2 })).toThrow();
+    expect(() => new GeneticAlgorithm({ mutationRate: -0.1 })).toThrow();
+    expect(() => new GeneticAlgorithm({ mutationSigma: 0 })).toThrow();
+  });
+
+  it('EVO-06: GeneticAlgorithm.evolveGeneration preserves elites, clamps genes, summarizes fitness, and is deterministic', () => {
+    const ga = new GeneticAlgorithm({ populationSize: 6, gamesPerGenome: 5, eliteCount: 2, immigrantCount: 1 });
+    expect(() => ga.evolveGeneration([], new SeededRandomSource(1))).toThrow();
+
+    const pop = ga.createInitialPopulation(new SeededRandomSource(5));
+    const evals: GenomeEvaluation[] = pop.map((genome, idx) => ({
+      genome,
+      generation: 1,
+      gamesPlayed: 5,
+      fitness: (idx + 1) * 10,
+      winRate: 0.5,
+      meanScore: idx + 5,
+      medianScore: idx + 5,
+      p95Score: idx + 8,
+      p99Score: idx + 9,
+      maxScore: idx + 10,
+      meanBlooms: 7,
+    }));
+
+    const step1 = ga.evolveGeneration(evals, new SeededRandomSource(77));
+    const step2 = ga.evolveGeneration(evals, new SeededRandomSource(77));
+    expect(step1.nextPopulation).toEqual(step2.nextPopulation);
+    expect(step1.nextPopulation).toHaveLength(6);
+    expect(step1.nextPopulation.every((g) => g.generation === 2)).toBe(true);
+    expect(step1.nextPopulation[0]!.weights).toEqual(pop[5]!.weights);
+    expect(step1.nextPopulation[1]!.weights).toEqual(pop[4]!.weights);
+
+    expect(step1.summary.generation).toBe(1);
+    expect(step1.summary.bestFitness).toBe(60);
+    expect(step1.summary.meanFitness).toBeCloseTo(35);
+    expect(step1.summary.champion.genome.id).toBe(pop[5]!.id);
+
+    for (const child of step1.nextPopulation) {
+      for (const spec of GENE_SPECS) {
+        expect(child.weights[spec.key]).toBeGreaterThanOrEqual(spec.min);
+        expect(child.weights[spec.key]).toBeLessThanOrEqual(spec.max);
+      }
+    }
+
+    // Exercise crossoverRate = 0 (clone + mutate path)
+    const gaNoCross = new GeneticAlgorithm({ populationSize: 6, gamesPerGenome: 5, crossoverRate: 0, mutationRate: 1 });
+    expect(gaNoCross.evolveGeneration(evals, new SeededRandomSource(77)).nextPopulation).toHaveLength(6);
   });
 });
