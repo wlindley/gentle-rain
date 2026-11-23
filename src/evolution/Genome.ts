@@ -108,14 +108,11 @@ export class Genome {
 
   static fromJSON(raw: string): Genome {
     const data: unknown = JSON.parse(raw);
-    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    if (!data || typeof data !== 'object' || Array.isArray(data) || !('weights' in data) || !data.weights || typeof data.weights !== 'object') {
       throw new RangeError('Invalid serialized genome');
     }
     const obj = data as Partial<SerializedGenome>;
-    if (!obj.weights || typeof obj.weights !== 'object') {
-      throw new RangeError('Invalid serialized genome weights');
-    }
-    return new Genome(obj.id as string, obj.weights, obj.generation);
+    return new Genome(obj.id as string, obj.weights!, obj.generation);
   }
 
   toJSON(): SerializedGenome {

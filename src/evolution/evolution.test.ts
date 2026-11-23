@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { BotRegistry, RandomBot } from '../bots';
+import { CornerCoord, FLOWER_COLORS, Game } from '../game';
+import type { FlowerColor } from '../game';
 import { SeededRandomSource } from '../rng';
-import { GENE_SPECS, Genome } from './index';
+import { GameRunner } from '../simulation';
+import { EvolvedBot, GENE_SPECS, Genome } from './index';
 import type { GeneWeights } from './index';
 
 describe('src/evolution', () => {
@@ -59,5 +63,55 @@ describe('src/evolution', () => {
     expect(() => Genome.fromJSON(JSON.stringify({ id: 'x', generation: 0, weights: {} }))).toThrow();
     const badWeights: Record<string, unknown> = { ...(r1.weights as GeneWeights), immediateBloomWeight: 'nope' };
     expect(() => Genome.fromJSON(JSON.stringify({ id: 'x', generation: 0, weights: badWeights }))).toThrow();
+  });
+
+  it('EVO-02: EvolvedBot plays full games via GameRunner, outperforms RandomBot, and respects bloom scarcity weights', () => {
+    const hGenome = Genome.heuristicSeed('h0');
+    const hBot = new EvolvedBot(hGenome);
+    expect(hBot.id).toBe('evolved-h0');
+    expect(hBot.name).toBe('Evolved (h0)');
+    expect(hBot.genome).toBe(hGenome);
+    expect(hBot.description.length).toBeGreaterThan(0);
+
+    const named = new EvolvedBot(Genome.greedySeed('g0'), 'Custom Greedy');
+    expect(named.name).toBe('Custom Greedy');
+
+    const registry = BotRegistry.createDefault();
+    registry.register(hBot);
+    expect(registry.require(hBot.id)).toBe(hBot);
+
+    const randGenomeBot = new EvolvedBot(Genome.random('rand', new SeededRandomSource(99)));
+    const baseline = new RandomBot();
+    let hScore = 0;
+    let rScore = 0;
+    for (let s = 1; s <= 20; s += 1) {
+      const hRes = new GameRunner(hBot, s).runToCompletion();
+      const gRes = new GameRunner(named, s).runToCompletion();
+      const rgRes = new GameRunner(randGenomeBot, s).runToCompletion();
+      const bRes = new GameRunner(baseline, s).runToCompletion();
+      expect(hRes.score).toBeGreaterThanOrEqual(0);
+      expect(gRes.score).toBeGreaterThanOrEqual(0);
+      expect(rgRes.score).toBeGreaterThanOrEqual(0);
+      hScore += hRes.score;
+      rScore += bRes.score;
+    }
+    expect(hScore / 20).toBeGreaterThan(10);
+    expect(hScore / 20).toBeGreaterThan(rScore / 20);
+
+    // bloomScarcityPriority positive prefers scarcer unseen color; negative prefers more common
+    const game = Game.create(new SeededRandomSource(1));
+    const unseenCounts = new Map<FlowerColor, number>(FLOWER_COLORS.map((c) => [c, 0]));
+    for (const t of game.unseenTiles) for (const c of t.baseEdges) unseenCounts.set(c, (unseenCounts.get(c) ?? 0) + 1);
+    const sorted = [...FLOWER_COLORS].sort((a, b) => (unseenCounts.get(a) ?? 0) - (unseenCounts.get(b) ?? 0));
+    const scarce = sorted[0]!;
+    const common = sorted[sorted.length - 1]!;
+    expect(unseenCounts.get(scarce)!).toBeLessThan(unseenCounts.get(common)!);
+
+    const pending = [{ corner: new CornerCoord(0, 0), eligibleColors: [common, scarce] as readonly FlowerColor[] }];
+    const posBot = new EvolvedBot(new Genome('pos', { ...hGenome.weights, bloomScarcityPriority: 100, bloomFrontierScarcityPriority: 0 }));
+    const negBot = new EvolvedBot(new Genome('neg', { ...hGenome.weights, bloomScarcityPriority: -50, bloomFrontierScarcityPriority: 0 }));
+    const move = game.validPlacements[0]!;
+    expect(posBot.chooseBlooms(game, move, pending, new SeededRandomSource(1))[0]!.color).toBe(scarce);
+    expect(negBot.chooseBlooms(game, move, pending, new SeededRandomSource(1))[0]!.color).toBe(common);
   });
 });
