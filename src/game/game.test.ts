@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  Board,
   CornerCoord,
   Direction,
   FLOWER_COLORS,
@@ -126,5 +127,75 @@ describe('src/game', () => {
     const rotatedFirst = [first[3]!, first[0]!, first[1]!, first[2]!];
     const dupTile = validRaw.map((e, i) => (i === 1 ? rotatedFirst : e));
     expect(() => new TileCatalog(dupTile)).toThrow();
+  });
+
+  it('GAME-05: Board.placeInitialTile places at (0,0), populates 4 frontier constraints, and rejects non-empty board', () => {
+    const board = new Board();
+    const t0 = new PondTile(0, ['red', 'orange', 'white', 'yellow']);
+    board.placeInitialTile(t0);
+
+    expect(board.placedTileCount).toBe(1);
+    expect(board.placedTiles).toHaveLength(1);
+    expect(board.tileAt(new GridCoord(0, 0))?.tile).toBe(t0);
+    expect(board.tileAt(new GridCoord(0, 0))?.rotation).toBe(0);
+    expect(board.tileAt(new GridCoord(1, 0))).toBeUndefined();
+
+    const byKey = new Map(board.frontierConstraints.map((c) => [c.coord.key, c]));
+    expect(byKey.size).toBe(4);
+    expect(byKey.get('-1,0')?.requiredEdges).toEqual([null, null, 'red', null]);
+    expect(byKey.get('0,-1')?.requiredEdges).toEqual([null, null, null, 'orange']);
+    expect(byKey.get('1,0')?.requiredEdges).toEqual(['white', null, null, null]);
+    expect(byKey.get('0,1')?.requiredEdges).toEqual([null, 'yellow', null, null]);
+    for (const c of byKey.values()) expect(c.neighborCount).toBe(1);
+
+    expect(() => board.placeInitialTile(t0)).toThrow();
+
+    const rotatedBoard = new Board();
+    rotatedBoard.placeInitialTile(t0, 1);
+    expect(rotatedBoard.tileAt(new GridCoord(0, 0))?.rotation).toBe(1);
+  });
+
+  it('GAME-06: Board.validPlacementsFor and isValidPlacement match all adjacent edges across rotations', () => {
+    const board = new Board();
+    board.placeInitialTile(new PondTile(0, ['red', 'orange', 'white', 'yellow']));
+
+    const noMatch = new PondTile(1, ['pink', 'blue', 'purple', 'black']);
+    expect(board.validPlacementsFor(noMatch)).toEqual([]);
+    expect(board.isValidPlacement(noMatch, { coord: new GridCoord(1, 0), rotation: 0 })).toBe(false);
+
+    const oneColorMatch = new PondTile(2, ['white', 'pink', 'blue', 'purple']);
+    const placements = board.validPlacementsFor(oneColorMatch);
+    expect(placements).toEqual([{ coord: new GridCoord(1, 0), rotation: 0 }]);
+    expect(board.isValidPlacement(oneColorMatch, { coord: new GridCoord(1, 0), rotation: 0 })).toBe(true);
+    expect(board.isValidPlacement(oneColorMatch, { coord: new GridCoord(1, 0), rotation: 1 })).toBe(false);
+
+    board.placeTile(oneColorMatch, { coord: new GridCoord(1, 0), rotation: 0 });
+    const southTile = new PondTile(3, ['black', 'yellow', 'blue', 'pink']);
+    board.placeTile(southTile, { coord: new GridCoord(0, 1), rotation: 0 });
+
+    const cornerFit = new PondTile(4, ['blue', 'purple', 'red', 'white']);
+    expect(board.isValidPlacement(cornerFit, { coord: new GridCoord(1, 1), rotation: 0 })).toBe(true);
+    expect(board.isValidPlacement(cornerFit, { coord: new GridCoord(1, 1), rotation: 2 })).toBe(false);
+  });
+
+  it('GAME-07: Board.placeTile rejects invalid moves and updates multi-edge frontier constraints incrementally', () => {
+    const board = new Board();
+    const t0 = new PondTile(0, ['red', 'orange', 'white', 'yellow']);
+    const t1 = new PondTile(1, ['white', 'pink', 'blue', 'purple']);
+    const t2 = new PondTile(2, ['black', 'yellow', 'blue', 'pink']);
+    board.placeInitialTile(t0);
+
+    expect(() => board.placeTile(t1, { coord: new GridCoord(0, 0), rotation: 0 })).toThrow();
+    expect(() => board.placeTile(t1, { coord: new GridCoord(3, 3), rotation: 0 })).toThrow();
+    expect(() => board.placeTile(t1, { coord: new GridCoord(1, 0), rotation: 1 })).toThrow();
+
+    board.placeTile(t1, { coord: new GridCoord(1, 0), rotation: 0 });
+    board.placeTile(t2, { coord: new GridCoord(0, 1), rotation: 0 });
+
+    const byKey = new Map(board.frontierConstraints.map((c) => [c.coord.key, c]));
+    expect(byKey.has('1,0')).toBe(false);
+    expect(byKey.has('0,1')).toBe(false);
+    expect(byKey.get('1,1')?.requiredEdges).toEqual(['blue', 'purple', null, null]);
+    expect(byKey.get('1,1')?.neighborCount).toBe(2);
   });
 });

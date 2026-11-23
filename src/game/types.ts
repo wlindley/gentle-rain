@@ -1,3 +1,6 @@
+import type { CornerCoord, GridCoord } from './Coords';
+import type { PondTile } from './PondTile';
+
 export const FLOWER_COLORS = [
   'red',
   'orange',
@@ -25,4 +28,43 @@ export interface BoardBounds {
   readonly maxX: number;
   readonly minY: number;
   readonly maxY: number;
+}
+
+export interface PlacedTile {
+  readonly tile: PondTile;
+  readonly coord: GridCoord;
+  readonly rotation: Rotation;
+}
+
+export interface TilePlacement {
+  readonly coord: GridCoord;
+  readonly rotation: Rotation;
+}
+
+export interface FrontierConstraint {
+  readonly coord: GridCoord;
+  readonly requiredEdges: readonly [
+    FlowerColor | null,
+    FlowerColor | null,
+    FlowerColor | null,
+    FlowerColor | null,
+  ];
+  readonly neighborCount: number;
+}
+
+export interface CompletedCorner {
+  readonly corner: CornerCoord;
+  readonly adjacentColors: readonly FlowerColor[];
+}
+
+export interface BloomPlacement {
+  readonly corner: CornerCoord;
+  readonly color: FlowerColor;
+}
+
+export interface PlacementPreview {
+  readonly placement: TilePlacement;
+  readonly completedCorners: readonly CompletedCorner[];
+  readonly affectedFrontierConstraints: readonly FrontierConstraint[];
+  readonly neighborCount: number;
 }
