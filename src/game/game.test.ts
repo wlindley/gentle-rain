@@ -198,4 +198,93 @@ describe('src/game', () => {
     expect(byKey.get('1,1')?.requiredEdges).toEqual(['blue', 'purple', null, null]);
     expect(byKey.get('1,1')?.neighborCount).toBe(2);
   });
+
+  it('GAME-08: Board.placeTile detects 1, 2, and 4 simultaneous 2x2 corners with deduplicated adjacentColors', () => {
+    const b1 = new Board();
+    b1.placeInitialTile(new PondTile(0, ['red', 'orange', 'white', 'yellow']));
+    b1.placeTile(new PondTile(1, ['white', 'pink', 'blue', 'yellow']), { coord: new GridCoord(1, 0), rotation: 0 });
+    b1.placeTile(new PondTile(2, ['black', 'yellow', 'blue', 'pink']), { coord: new GridCoord(0, 1), rotation: 0 });
+    const c1 = b1.placeTile(new PondTile(3, ['blue', 'yellow', 'red', 'purple']), { coord: new GridCoord(1, 1), rotation: 0 });
+    expect(c1).toHaveLength(1);
+    expect(c1[0]!.corner.equals(new CornerCoord(0, 0))).toBe(true);
+    expect([...c1[0]!.adjacentColors].sort()).toEqual(['blue', 'white', 'yellow']);
+
+    const ring: readonly [number, number, readonly [FlowerColor, FlowerColor, FlowerColor, FlowerColor]][] = [
+      [0, 0, ['red', 'orange', 'white', 'yellow']], [1, 0, ['white', 'pink', 'blue', 'purple']],
+      [2, 0, ['blue', 'black', 'red', 'orange']], [2, 1, ['pink', 'orange', 'white', 'yellow']],
+      [0, 1, ['white', 'yellow', 'blue', 'black']], [2, 2, ['purple', 'yellow', 'blue', 'black']],
+      [1, 2, ['orange', 'red', 'purple', 'white']], [0, 2, ['blue', 'black', 'orange', 'pink']],
+    ];
+    const fill = (count: number) => {
+      const b = new Board();
+      ring.slice(0, count).forEach(([x, y, e], i) =>
+        i === 0 ? b.placeInitialTile(new PondTile(i, e)) : b.placeTile(new PondTile(i, e), { coord: new GridCoord(x, y), rotation: 0 }),
+      );
+      return b.placeTile(new PondTile(9, ['blue', 'purple', 'pink', 'red']), { coord: new GridCoord(1, 1), rotation: 0 });
+    };
+    expect(fill(5).map((c) => c.corner.key).sort()).toEqual(['0,0', '1,0']);
+    const c4 = fill(8);
+    expect(c4.map((c) => c.corner.key).sort()).toEqual(['0,0', '0,1', '1,0', '1,1']);
+    expect([...c4.find((c) => c.corner.key === '1,1')!.adjacentColors].sort()).toEqual(['pink', 'purple', 'red', 'yellow']);
+  });
+
+  it('GAME-09: Board.previewPlacement predicts corners, neighborCount, and affected frontier without mutating state', () => {
+    const board = new Board();
+    board.placeInitialTile(new PondTile(0, ['red', 'orange', 'white', 'yellow']));
+    board.placeTile(new PondTile(1, ['white', 'pink', 'blue', 'yellow']), { coord: new GridCoord(1, 0), rotation: 0 });
+    const t2 = new PondTile(2, ['black', 'yellow', 'blue', 'pink']);
+    const sharedPreview = board.previewPlacement(t2, { coord: new GridCoord(0, 1), rotation: 0 });
+    expect(sharedPreview.affectedFrontierConstraints.find((c) => c.coord.key === '1,1')?.requiredEdges).toEqual(['blue', 'yellow', null, null]);
+    board.placeTile(t2, { coord: new GridCoord(0, 1), rotation: 0 });
+
+    const t3 = new PondTile(3, ['blue', 'yellow', 'red', 'purple']);
+    const placement = { coord: new GridCoord(1, 1), rotation: 0 as const };
+    const beforeFrontier = board.frontierConstraints.map((c) => c.coord.key).sort();
+
+    const preview = board.previewPlacement(t3, placement);
+    expect(preview.placement).toEqual(placement);
+    expect(preview.neighborCount).toBe(2);
+    expect(preview.completedCorners).toHaveLength(1);
+    expect(preview.completedCorners[0]!.corner.key).toBe('0,0');
+    expect([...preview.completedCorners[0]!.adjacentColors].sort()).toEqual(['blue', 'white', 'yellow']);
+
+    const affected = new Map(preview.affectedFrontierConstraints.map((c) => [c.coord.key, c]));
+    expect(affected.size).toBe(2);
+    expect(affected.get('2,1')?.requiredEdges).toEqual(['red', null, null, null]);
+    expect(affected.get('1,2')?.requiredEdges).toEqual([null, 'purple', null, null]);
+
+    expect(board.placedTileCount).toBe(3);
+    expect(board.tileAt(new GridCoord(1, 1))).toBeUndefined();
+    expect(board.frontierConstraints.map((c) => c.coord.key).sort()).toEqual(beforeFrontier);
+    expect(() => board.previewPlacement(t3, { coord: new GridCoord(1, 1), rotation: 1 })).toThrow();
+  });
+
+  it('GAME-10: Board.placeBloom validates corners/colors and Board.bounds tracks min/max coordinates', () => {
+    const board = new Board();
+    expect(board.bounds).toEqual({ minX: 0, maxX: 0, minY: 0, maxY: 0 });
+    expect(board.placedBloomCount).toBe(0);
+    expect(board.placedBlooms).toEqual([]);
+    expect(board.bloomAt(new CornerCoord(0, 0))).toBeUndefined();
+
+    board.placeInitialTile(new PondTile(0, ['red', 'orange', 'white', 'yellow']));
+    expect(board.bounds).toEqual({ minX: 0, maxX: 0, minY: 0, maxY: 0 });
+    board.placeTile(new PondTile(1, ['white', 'pink', 'blue', 'yellow']), { coord: new GridCoord(1, 0), rotation: 0 });
+    const t2 = new PondTile(2, ['black', 'yellow', 'blue', 'pink']);
+    const sharedPreview = board.previewPlacement(t2, { coord: new GridCoord(0, 1), rotation: 0 });
+    expect(sharedPreview.affectedFrontierConstraints.find((c) => c.coord.key === '1,1')?.requiredEdges).toEqual(['blue', 'yellow', null, null]);
+    board.placeTile(t2, { coord: new GridCoord(0, 1), rotation: 0 });
+    board.placeTile(new PondTile(3, ['blue', 'yellow', 'red', 'purple']), { coord: new GridCoord(1, 1), rotation: 0 });
+    board.placeTile(new PondTile(4, ['pink', 'blue', 'red', 'black']), { coord: new GridCoord(-1, 0), rotation: 0 });
+    board.placeTile(new PondTile(5, ['pink', 'blue', 'purple', 'orange']), { coord: new GridCoord(0, -1), rotation: 0 });
+    expect(board.bounds).toEqual({ minX: -1, maxX: 1, minY: -1, maxY: 1 });
+
+    expect(() => board.placeBloom({ corner: new CornerCoord(1, 0), color: 'blue' })).toThrow();
+    expect(() => board.placeBloom({ corner: new CornerCoord(0, 0), color: 'black' })).toThrow();
+
+    board.placeBloom({ corner: new CornerCoord(0, 0), color: 'white' });
+    expect(board.placedBloomCount).toBe(1);
+    expect(board.placedBlooms).toHaveLength(1);
+    expect(board.bloomAt(new CornerCoord(0, 0))).toBe('white');
+    expect(() => board.placeBloom({ corner: new CornerCoord(0, 0), color: 'blue' })).toThrow();
+  });
 });
