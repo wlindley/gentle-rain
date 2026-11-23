@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { CornerCoord, Direction, FLOWER_COLORS, GridCoord } from './index';
+import {
+  CornerCoord,
+  Direction,
+  FLOWER_COLORS,
+  FlowerColor,
+  GridCoord,
+  PondTile,
+  TileCatalog,
+} from './index';
 
 describe('src/game', () => {
   it('GAME-01: GridCoord and CornerCoord validate integers, compute neighbors, round-trip keys, and compare equality', () => {
@@ -51,5 +59,72 @@ describe('src/game', () => {
     expect(() => CornerCoord.fromKey('bad')).toThrow();
     expect(() => CornerCoord.fromKey('1,2,3')).toThrow();
     expect(() => CornerCoord.fromKey('1,2.5')).toThrow();
+  });
+
+  it('GAME-02: PondTile rotates clockwise, checks colors, rejects invalid edges, and normalizes canonicalKey', () => {
+    const tile = new PondTile(0, ['red', 'orange', 'white', 'yellow']);
+    expect(tile.id).toBe(0);
+    expect(tile.baseEdges).toEqual(['red', 'orange', 'white', 'yellow']);
+
+    expect(tile.edgeAt(Direction.West)).toBe('red');
+    expect(tile.edgeAt(Direction.North, 0)).toBe('orange');
+    expect(tile.edgesAt(0)).toEqual(['red', 'orange', 'white', 'yellow']);
+    expect(tile.edgesAt(1)).toEqual(['yellow', 'red', 'orange', 'white']);
+    expect(tile.edgesAt(2)).toEqual(['white', 'yellow', 'red', 'orange']);
+    expect(tile.edgesAt(3)).toEqual(['orange', 'white', 'yellow', 'red']);
+    expect(tile.edgeAt(Direction.East, 1)).toBe('orange');
+    expect(tile.edgeAt(Direction.South, 3)).toBe('red');
+
+    expect(tile.hasColor('white')).toBe(true);
+    expect(tile.hasColor('blue')).toBe(false);
+
+    const rotated = new PondTile(1, ['yellow', 'red', 'orange', 'white']);
+    const reversed = new PondTile(2, ['red', 'yellow', 'white', 'orange']);
+    expect(tile.canonicalKey()).toBe(rotated.canonicalKey());
+    expect(tile.canonicalKey()).not.toBe(reversed.canonicalKey());
+
+    expect(() => new PondTile(-1, ['red', 'orange', 'white', 'yellow'])).toThrow();
+    expect(() => new PondTile(0.5, ['red', 'orange', 'white', 'yellow'])).toThrow();
+    expect(() => new PondTile(3, ['red', 'red', 'white', 'yellow'])).toThrow();
+    expect(() => new PondTile(4, ['red', 'orange', 'white', 'green' as FlowerColor])).toThrow();
+  });
+
+  it('GAME-03: TileCatalog.defaultCatalog loads 28 rotationally unique tiles with 14 edges per color', () => {
+    const catalog = TileCatalog.defaultCatalog();
+    expect(catalog.tiles).toHaveLength(28);
+
+    const keys = new Set(catalog.tiles.map((t) => t.canonicalKey()));
+    expect(keys.size).toBe(28);
+
+    const counts = new Map<FlowerColor, number>(FLOWER_COLORS.map((c) => [c, 0]));
+    for (const tile of catalog.tiles) {
+      for (const color of tile.baseEdges) {
+        counts.set(color, (counts.get(color) ?? 0) + 1);
+      }
+    }
+    for (const color of FLOWER_COLORS) {
+      expect(counts.get(color)).toBe(14);
+    }
+  });
+
+  it('GAME-04: TileCatalog rejects invalid tile counts, edge counts, colors, duplicates, and rotational duplicates', () => {
+    const validRaw = TileCatalog.defaultCatalog().tiles.map((t) => [...t.baseEdges]);
+    expect(new TileCatalog(validRaw).tiles).toHaveLength(28);
+
+    expect(() => new TileCatalog(validRaw.slice(0, 27))).toThrow();
+
+    const badEdgeCount = validRaw.map((e, i) => (i === 0 ? e.slice(0, 3) : e));
+    expect(() => new TileCatalog(badEdgeCount)).toThrow();
+
+    const badColor = validRaw.map((e, i) => (i === 0 ? ['red', 'orange', 'white', 'cyan'] : e));
+    expect(() => new TileCatalog(badColor)).toThrow();
+
+    const dupColor = validRaw.map((e, i) => (i === 0 ? ['red', 'red', 'white', 'yellow'] : e));
+    expect(() => new TileCatalog(dupColor)).toThrow();
+
+    const first = validRaw[0]!;
+    const rotatedFirst = [first[3]!, first[0]!, first[1]!, first[2]!];
+    const dupTile = validRaw.map((e, i) => (i === 1 ? rotatedFirst : e));
+    expect(() => new TileCatalog(dupTile)).toThrow();
   });
 });
