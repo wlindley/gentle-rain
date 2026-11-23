@@ -33,7 +33,7 @@ export function StatsPanel({
   return (
     <aside className="panel" aria-label="Live simulation statistics">
       <h2>{botName} — Live Telemetry</h2>
-      <div className="progress-track" role="progressbar" aria-valuenow={completedGames} aria-valuemax={targetGames}>
+      <div className="progress-track" role="progressbar" aria-label="Simulation progress" aria-valuemin={0} aria-valuenow={completedGames} aria-valuemax={targetGames}>
         <div className="progress-fill" style={{ width: `${pct}%` }} />
       </div>
 

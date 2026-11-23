@@ -18,50 +18,58 @@ function gridDims(count: number): { cols: number; rows: number } {
 export function SimulationGridCanvas({ slots, onSelectSlot }: SimulationGridCanvasProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const slotsRef = useRef(slots);
+  slotsRef.current = slots;
 
-  useEffect(() => {
+  const drawRef = useRef<() => void>(() => {});
+  drawRef.current = () => {
     const canvas = canvasRef.current;
     const wrap = wrapRef.current;
     if (!canvas || !wrap) return;
+    const rect = wrap.getBoundingClientRect();
+    const width = Math.max(240, Math.floor(rect.width));
+    const height = Math.max(180, Math.floor(rect.height));
+    const dpr = window.devicePixelRatio || 1;
+    if (canvas.width !== Math.floor(width * dpr) || canvas.height !== Math.floor(height * dpr)) {
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+    }
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = POND_THEME.waterBg;
+    ctx.fillRect(0, 0, width, height);
 
-    const draw = () => {
-      const rect = wrap.getBoundingClientRect();
-      const width = Math.max(240, Math.floor(rect.width));
-      const height = Math.max(180, Math.floor(rect.height));
-      const dpr = window.devicePixelRatio || 1;
-      if (canvas.width !== Math.floor(width * dpr) || canvas.height !== Math.floor(height * dpr)) {
-        canvas.width = Math.floor(width * dpr);
-        canvas.height = Math.floor(height * dpr);
-      }
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.fillStyle = POND_THEME.waterBg;
-      ctx.fillRect(0, 0, width, height);
+    const currentSlots = slotsRef.current;
+    if (currentSlots.length === 0) return;
+    const { cols, rows } = gridDims(currentSlots.length);
+    const cellW = width / cols;
+    const cellH = height / rows;
+    for (let i = 0; i < currentSlots.length; i += 1) {
+      const slot = currentSlots[i]!;
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const snap = slot.snapshot;
+      const badge = currentSlots.length <= 64 ? `${snap.placedBlooms.length}/8 · ${snap.score}` : undefined;
+      renderBoardSnapshot(
+        ctx,
+        snap,
+        { x: col * cellW, y: row * cellH, width: cellW, height: cellH },
+        { badgeText: badge },
+      );
+    }
+  };
 
-      if (slots.length === 0) return;
-      const { cols, rows } = gridDims(slots.length);
-      const cellW = width / cols;
-      const cellH = height / rows;
-      for (let i = 0; i < slots.length; i += 1) {
-        const slot = slots[i]!;
-        const col = i % cols;
-        const row = Math.floor(i / cols);
-        const snap = slot.snapshot;
-        const badge = slots.length <= 64 ? `${snap.placedBlooms.length}/8 · ${snap.score}` : undefined;
-        renderBoardSnapshot(
-          ctx,
-          snap,
-          { x: col * cellW, y: row * cellH, width: cellW, height: cellH },
-          { badgeText: badge },
-        );
-      }
-    };
-
-    draw();
-    const observer = new ResizeObserver(draw);
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const observer = new ResizeObserver(() => drawRef.current());
     observer.observe(wrap);
     return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    drawRef.current();
   }, [slots]);
 
   const handleClick = (event: MouseEvent<HTMLCanvasElement>) => {

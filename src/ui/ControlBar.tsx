@@ -63,8 +63,8 @@ export function ControlBar(props: ControlBarProps) {
         </select>
       </label>
 
-      <label className="field">
-        <span>
+      <div className="field">
+        <label>
           <input
             type="checkbox"
             checked={props.useFixedSeed}
@@ -72,15 +72,16 @@ export function ControlBar(props: ControlBarProps) {
             onChange={(e) => props.onToggleFixedSeed(e.target.checked)}
           />{' '}
           Fixed Seed
-        </span>
+        </label>
         <input
           type="number"
+          aria-label="Fixed seed value"
           value={props.seed}
           disabled={!props.useFixedSeed || busy}
           onChange={(e) => props.onSeedChange(Math.trunc(Number(e.target.value) || 0))}
           style={{ width: '96px' }}
         />
-      </label>
+      </div>
 
       <div className="btn-group">
         <button type="button" className="primary" disabled={busy} onClick={props.onToggleRun}>

@@ -73,7 +73,8 @@ export function App() {
     const frame = () => {
       if (isTournamentRunning && tournamentRef.current) {
         const runner = tournamentRef.current;
-        runner.stepGamesAll(Math.max(10, Math.ceil(targetGames / 25)));
+        const deadline = performance.now() + 12;
+        while (!runner.isComplete && performance.now() < deadline) runner.stepGamesAll(5);
         setTournamentSummaries(runner.rankedSummaries);
         if (runner.isComplete) {
           const now = new Date().toISOString();
