@@ -5,6 +5,7 @@ import {
   GameRunner,
   InMemoryScoreStore,
   LocalStorageScoreStore,
+  SimulationSession,
   SimulationStats,
 } from './index';
 import type { BotRunRecord } from './index';
@@ -169,5 +170,67 @@ describe('src/simulation', () => {
     store.clear();
     expect(backing.has('gr.test.runs')).toBe(false);
     expect(store.loadAll()).toEqual([]);
+  });
+
+  it('SIM-05: SimulationSession recycles slots, tracks best/worst snapshots, and yields identical stats via stepTurns vs stepGames', () => {
+    const bot = new GreedyBloomBot();
+    const small = new SimulationSession({ bot, targetGames: 2, parallelSlots: 5, baseSeed: 100 });
+    expect(small.slotViews).toHaveLength(2);
+    expect(small.completedGames).toBe(0);
+    expect(small.remainingGames).toBe(2);
+    expect(small.isComplete).toBe(false);
+    expect(small.bestSnapshot).toBeNull();
+    expect(small.worstSnapshot).toBeNull();
+
+    expect(() => new SimulationSession({ bot, targetGames: 0, parallelSlots: 2, baseSeed: 1 })).toThrow();
+    expect(() => new SimulationSession({ bot, targetGames: 2, parallelSlots: 0, baseSeed: 1 })).toThrow();
+    expect(() => new SimulationSession({ bot, targetGames: 1.5, parallelSlots: 2, baseSeed: 1 })).toThrow();
+
+    const byTurns = new SimulationSession({ bot, targetGames: 10, parallelSlots: 3, baseSeed: 500 });
+    expect(byTurns.slotViews).toHaveLength(3);
+    while (!byTurns.isComplete) byTurns.stepTurns(1);
+    expect(byTurns.completedGames).toBe(10);
+    expect(byTurns.remainingGames).toBe(0);
+    expect(byTurns.stepTurns(1)).toBe(0);
+    expect(byTurns.stepGames(5)).toBe(0);
+    expect(byTurns.bestSnapshot?.score).toBe(byTurns.stats.maxScore);
+    expect(byTurns.worstSnapshot?.score).toBe(byTurns.stats.minScore);
+
+    const byGames = new SimulationSession({ bot, targetGames: 10, parallelSlots: 3, baseSeed: 500 });
+    expect(byGames.stepGames(4)).toBe(4);
+    expect(byGames.completedGames).toBe(4);
+    expect(byGames.stepGames(10)).toBe(6);
+    expect(byGames.isComplete).toBe(true);
+
+    expect(byTurns.stats.winCount).toBe(byGames.stats.winCount);
+    expect(byTurns.stats.meanScore).toBe(byGames.stats.meanScore);
+    expect(byTurns.stats.medianScore).toBe(byGames.stats.medianScore);
+    expect(byTurns.stats.p95Score).toBe(byGames.stats.p95Score);
+    expect(byTurns.stats.p99Score).toBe(byGames.stats.p99Score);
+    expect([...byTurns.stats.scores].sort((a, b) => a - b)).toEqual(
+      [...byGames.stats.scores].sort((a, b) => a - b),
+    );
+  });
+
+  it('SIM-06: SimulationSession.toRunRecord exports accurate BotRunRecord that round-trips through ScoreStore', () => {
+    const session = new SimulationSession({ bot: new RandomBot(), targetGames: 6, parallelSlots: 2, baseSeed: 321 });
+    session.stepGames(6);
+
+    const explicit = session.toRunRecord('run-1', '2026-01-01T12:00:00.000Z', true);
+    expect(explicit.id).toBe('run-1');
+    expect(explicit.botId).toBe('random');
+    expect(explicit.baseSeed).toBe(321);
+    expect(explicit.totalGames).toBe(6);
+    expect(explicit.p95Score).toBe(session.stats.p95Score);
+    expect(explicit.p99Score).toBe(session.stats.p99Score);
+    expect(explicit.meanScore).toBe(session.stats.meanScore);
+    expect(Object.values(explicit.scoreHistogram).reduce((a, b) => a + b, 0)).toBe(6);
+
+    const implicit = session.toRunRecord('run-2', '2026-01-01T12:01:00.000Z', false);
+    expect(implicit.baseSeed).toBeNull();
+
+    const store = new InMemoryScoreStore();
+    store.save(explicit);
+    expect(store.loadAll()).toEqual([explicit]);
   });
 });
