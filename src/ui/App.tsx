@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BotRegistry } from '../bots';
+import { EvolvedBot, LocalStorageEvolutionStore } from '../evolution';
+import type { Genome, GenomeEvaluation } from '../evolution';
 import type { GameSnapshot } from '../game';
 import { LocalStorageScoreStore, SimulationSession, TournamentRunner } from '../simulation';
 import type { BotRunRecord, TournamentSummary } from '../simulation';
 import { BoardInspectorDialog } from './BoardInspectorDialog';
 import { ControlBar, type SpeedMode } from './ControlBar';
+import { EvolutionPanel } from './EvolutionPanel';
 import { LeaderboardPanel } from './LeaderboardPanel';
 import { SimulationGridCanvas } from './SimulationGridCanvas';
 import { StatsPanel } from './StatsPanel';
@@ -14,9 +17,18 @@ const TURNS_PER_FRAME: Record<'1x' | '4x' | '20x', number> = { '1x': 1, '4x': 3,
 const SLOW_STEP_INTERVAL_MS = 167; // 1/10th of 60fps 1x (~6 turns/sec)
 
 export function App() {
-  const registry = useMemo(() => BotRegistry.createDefault(), []);
+  const evolutionStore = useMemo(() => new LocalStorageEvolutionStore(), []);
+  const registry = useMemo(() => {
+    const reg = BotRegistry.createDefault();
+    for (const ch of evolutionStore.loadChampions()) {
+      const bot = new EvolvedBot(ch.evaluation.genome, ch.name);
+      if (!reg.find(bot.id)) reg.register(bot);
+    }
+    return reg;
+  }, [evolutionStore]);
   const store = useMemo(() => new LocalStorageScoreStore(), []);
 
+  const [activeTab, setActiveTab] = useState<'simulator' | 'evolve'>('simulator');
   const [selectedBotId, setSelectedBotId] = useState(registry.bots[2]?.id ?? registry.bots[0]!.id);
   const [targetGames, setTargetGames] = useState(1000);
   const [parallelSlots, setParallelSlots] = useState(36);
@@ -154,46 +166,76 @@ export function App() {
     setIsTournamentRunning(true);
   };
 
+  const handleSendToSimulator = (genome: Genome, evaluation: GenomeEvaluation | null) => {
+    const label = `Evolved Gen ${genome.generation} (${genome.id})`;
+    const bot = new EvolvedBot(genome, label);
+    if (!registry.find(bot.id)) registry.register(bot);
+    if (evaluation) {
+      evolutionStore.saveChampion({ id: bot.id, name: label, savedAtIso: new Date().toISOString(), evaluation });
+    }
+    setSelectedBotId(bot.id);
+    resetSession(bot.id);
+    setActiveTab('simulator');
+  };
+
   return (
     <div className="app-shell">
       <header className="app-header">
         <div>
           <h1>A Gentle Rain</h1>
-          <p>Parallel Monte Carlo Bot Simulator · {activeBot.description}</p>
+          <p>
+            {activeTab === 'simulator'
+              ? `Parallel Monte Carlo Bot Simulator · ${activeBot.description}`
+              : 'Multi-Core Genetic Algorithm Bot Optimizer · Maximize 4×mean + median + 0.5×p95'}
+          </p>
         </div>
+        <nav className="tab-bar" aria-label="Workspace views">
+          <button type="button" className={activeTab === 'simulator' ? 'active' : ''} onClick={() => setActiveTab('simulator')}>
+            Simulator
+          </button>
+          <button type="button" className={activeTab === 'evolve' ? 'active' : ''} onClick={() => { setIsRunning(false); setActiveTab('evolve'); }}>
+            Evolve Bot (GA)
+          </button>
+        </nav>
       </header>
-      <ControlBar
-        bots={registry.bots} selectedBotId={selectedBotId} targetGames={targetGames} parallelSlots={parallelSlots}
-        speed={speed} useFixedSeed={useFixedSeed} seed={seed} isRunning={isRunning} isTournamentRunning={isTournamentRunning}
-        onSelectBot={(id) => { setSelectedBotId(id); resetSession(id); }}
-        onTargetGamesChange={(n) => { setTargetGames(n); resetSession(selectedBotId, n); }}
-        onParallelSlotsChange={(n) => { setParallelSlots(n); resetSession(selectedBotId, targetGames, n); }}
-        onSpeedChange={setSpeed}
-        onToggleFixedSeed={(on) => { setUseFixedSeed(on); resetSession(selectedBotId, targetGames, parallelSlots, on); }}
-        onSeedChange={(s) => { setSeed(s); resetSession(selectedBotId, targetGames, parallelSlots, useFixedSeed, s); }}
-        onToggleRun={handleToggleRun} onReset={() => resetSession()} onCompareAll={handleCompareAll}
-      />
-      <main className="workspace-grid">
-        <section className="panel" aria-label="Live parallel boards">
-          <h2>Live Parallel Pond Grid ({slots.length} Active · Click any board to inspect)</h2>
-          <SimulationGridCanvas
-            slots={slots}
-            onSelectSlot={(slot) => setInspected({ title: `${activeBot.name} — Game #${slot.gameIndex + 1}`, snapshot: slot.snapshot })}
+      {activeTab === 'evolve' ? (
+        <EvolutionPanel onSendToSimulator={handleSendToSimulator} />
+      ) : (
+        <>
+          <ControlBar
+            bots={registry.bots} selectedBotId={selectedBotId} targetGames={targetGames} parallelSlots={parallelSlots}
+            speed={speed} useFixedSeed={useFixedSeed} seed={seed} isRunning={isRunning} isTournamentRunning={isTournamentRunning}
+            onSelectBot={(id) => { setSelectedBotId(id); resetSession(id); }}
+            onTargetGamesChange={(n) => { setTargetGames(n); resetSession(selectedBotId, n); }}
+            onParallelSlotsChange={(n) => { setParallelSlots(n); resetSession(selectedBotId, targetGames, n); }}
+            onSpeedChange={setSpeed}
+            onToggleFixedSeed={(on) => { setUseFixedSeed(on); resetSession(selectedBotId, targetGames, parallelSlots, on); }}
+            onSeedChange={(s) => { setSeed(s); resetSession(selectedBotId, targetGames, parallelSlots, useFixedSeed, s); }}
+            onToggleRun={handleToggleRun} onReset={() => resetSession()} onCompareAll={handleCompareAll}
           />
-        </section>
-        <StatsPanel
-          botName={activeBot.name} completedGames={session.completedGames} targetGames={targetGames}
-          gamesPerSec={gamesPerSec} stats={session.stats} bestSnapshot={session.bestSnapshot} worstSnapshot={session.worstSnapshot}
-          onInspectSnapshot={(title, snapshot) => setInspected({ title, snapshot })}
-        />
-      </main>
-      <LeaderboardPanel
-        records={records} tournamentSummaries={tournamentSummaries} tournamentSeed={tournamentSeed}
-        onClearHistory={() => { store.clear(); setRecords([]); }}
-      />
-      <BoardInspectorDialog
-        title={inspected?.title ?? ''} snapshot={inspected?.snapshot ?? null} onClose={() => setInspected(null)}
-      />
+          <main className="workspace-grid">
+            <section className="panel" aria-label="Live parallel boards">
+              <h2>Live Parallel Pond Grid ({slots.length} Active · Click any board to inspect)</h2>
+              <SimulationGridCanvas
+                slots={slots}
+                onSelectSlot={(slot) => setInspected({ title: `${activeBot.name} — Game #${slot.gameIndex + 1}`, snapshot: slot.snapshot })}
+              />
+            </section>
+            <StatsPanel
+              botName={activeBot.name} completedGames={session.completedGames} targetGames={targetGames}
+              gamesPerSec={gamesPerSec} stats={session.stats} bestSnapshot={session.bestSnapshot} worstSnapshot={session.worstSnapshot}
+              onInspectSnapshot={(title, snapshot) => setInspected({ title, snapshot })}
+            />
+          </main>
+          <LeaderboardPanel
+            records={records} tournamentSummaries={tournamentSummaries} tournamentSeed={tournamentSeed}
+            onClearHistory={() => { store.clear(); setRecords([]); }}
+          />
+          <BoardInspectorDialog
+            title={inspected?.title ?? ''} snapshot={inspected?.snapshot ?? null} onClose={() => setInspected(null)}
+          />
+        </>
+      )}
     </div>
   );
 }

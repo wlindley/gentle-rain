@@ -107,6 +107,8 @@ export function EvolutionPanel({ onSendToSimulator }: EvolutionPanelProps) {
         setGeneration(gen);
       }
     } catch (err) {
+      pool.terminate();
+      if (poolRef.current === pool) poolRef.current = null;
       if (runningRef.current) {
         setError(err instanceof Error ? err.message : 'Evolution failed');
         setIsRunning(false);

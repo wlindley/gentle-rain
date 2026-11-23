@@ -18,9 +18,13 @@ export function ChampionCard({ champion, onSendToSimulator }: ChampionCardProps)
 
   const handleCopy = async () => {
     if (!activeGenome) return;
-    await navigator.clipboard?.writeText(JSON.stringify(activeGenome.toJSON(), null, 2));
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1500);
+    try {
+      await navigator.clipboard?.writeText(JSON.stringify(activeGenome.toJSON(), null, 2));
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setImportError('Clipboard access unavailable in this browser context.');
+    }
   };
 
   const handleImport = () => {

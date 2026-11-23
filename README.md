@@ -19,7 +19,8 @@ npm run build          # Typecheck and build static GitHub Pages bundle into dis
 | **`src/game`** | [`src/game/README.md`](src/game/README.md) | `src/rng`, `rules/pond-tiles.json` | Headless rules engine: `PondTile`, `TileCatalog`, integer-indexed `Board` + incremental `FrontierCache`, O(1) `previewPlacement`, `Game`, `GameResult`, `GameSnapshot`. |
 | **`src/bots`** | [`src/bots/README.md`](src/bots/README.md) | `src/rng`, `src/game` | Pluggable `Bot` interface, `BloomAssignmentSolver`, `RandomBot`, `GreedyBloomBot`, `HeuristicBot`, and `BotRegistry`. |
 | **`src/simulation`** | [`src/simulation/README.md`](src/simulation/README.md) | `src/rng`, `src/game`, `src/bots` | `GameRunner`, `SimulationStats` (mean/median/p95/p99/histograms), `SimulationSession`, `TournamentRunner`, `LocalStorageScoreStore`, and `InMemoryScoreStore`. |
-| **`src/ui`** | [`src/ui/README.md`](src/ui/README.md) | `src/rng`, `src/game`, `src/bots`, `src/simulation` | React 19 + HTML5 Canvas 2D dashboard for parallel simulations, live stats, click-to-inspect modal, and bot comparison. |
+| **`src/evolution`** | [`src/evolution/README.md`](src/evolution/README.md) | `src/rng`, `src/game`, `src/bots`, `src/simulation` | 20-gene interpretable `Genome`, `EvolvedBot`, `(4×mean + median + 0.5×p95)` fitness evaluator, `describeGenome()` English translator, `GeneticAlgorithm`, and `EvolutionStore`. |
+| **`src/ui`** | [`src/ui/README.md`](src/ui/README.md) | `src/rng`, `src/game`, `src/bots`, `src/simulation`, `src/evolution` | Light-mode React 19 + HTML5 Canvas 2D dashboard with Simulator and multi-core Web Worker **Evolve Bot (GA)** tabs. |
 
 ## Project Specifications
 

@@ -20,6 +20,7 @@ npm run preview  # Preview the production bundle locally
 - **Live Telemetry & Histograms**: Tracks Win Rate (8/8 blooms), Mean, Median, `p95`, `p99`, Min/Max score, Avg Blooms, Avg Discards, Score Distribution, and Blooms Placed (0–8).
 - **Board Inspector**: Click any live mini-board—or **Inspect Best** / **Inspect Worst**—to open a zoomed high-detail `<dialog>` view of that board.
 - **Compare All Bots & Persistent Leaderboard**: Runs all registered bots on identical seeded decks via `TournamentRunner` and persists completed runs in `localStorage` via `LocalStorageScoreStore`.
+- **Evolve Bot (GA) Tab**: Runs a multi-core Web Worker Genetic Algorithm (`EvolutionWorkerPool`) optimizing `4×mean + median + 0.5×p95` across 5,000 games/genome per generation (using the generation number as seed), plots fitness over generations, translates any genome into an English strategy summary (`describeGenome`), supports JSON copy/import, saves checkpoints/champions to `localStorage`, and sends evolved champions directly into the Simulator & Compare All Bots.
 
 ---
 
