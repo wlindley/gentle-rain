@@ -13,8 +13,10 @@ import {
   GENE_SPECS,
   GeneticAlgorithm,
   Genome,
+  InMemoryEvolutionStore,
+  LocalStorageEvolutionStore,
 } from './index';
-import type { GenomeEvaluation, GeneWeights } from './index';
+import type { EvolutionCheckpoint, GenomeEvaluation, GeneWeights, SavedChampion } from './index';
 
 describe('src/evolution', () => {
   it('EVO-01: Genome validates/clamps 20 gene weights, seeds deterministically, and round-trips JSON', () => {
@@ -243,5 +245,74 @@ describe('src/evolution', () => {
     // Exercise crossoverRate = 0 (clone + mutate path)
     const gaNoCross = new GeneticAlgorithm({ populationSize: 6, gamesPerGenome: 5, crossoverRate: 0, mutationRate: 1 });
     expect(gaNoCross.evolveGeneration(evals, new SeededRandomSource(77)).nextPopulation).toHaveLength(6);
+  });
+
+  it('EVO-07: InMemoryEvolutionStore and LocalStorageEvolutionStore persist, rehydrate Genomes, recover from bad JSON, and clear', () => {
+    const g = Genome.heuristicSeed('champ-1');
+    const evaluation: GenomeEvaluation = {
+      genome: g, generation: 2, gamesPlayed: 50, fitness: 75, winRate: 0.9,
+      meanScore: 14, medianScore: 14, p95Score: 18, p99Score: 19, maxScore: 20, meanBlooms: 7.9,
+    };
+    const checkpoint: EvolutionCheckpoint = {
+      config: DEFAULT_GA_CONFIG,
+      generation: 2,
+      population: [g],
+      history: [{ generation: 1, bestFitness: 75, meanFitness: 60, champion: evaluation }],
+      bestEver: evaluation,
+    };
+    const champion: SavedChampion = { id: 'c1', name: 'Gen2 Champ', savedAtIso: '2026-01-01T00:00:00.000Z', evaluation };
+
+    const mem = new InMemoryEvolutionStore();
+    expect(mem.loadCheckpoint()).toBeNull();
+    expect(mem.loadChampions()).toEqual([]);
+    mem.saveCheckpoint(checkpoint);
+    mem.saveChampion(champion);
+    expect(mem.loadCheckpoint()?.bestEver?.genome).toBeInstanceOf(Genome);
+    const loadedChamps = mem.loadChampions();
+    expect(loadedChamps).toHaveLength(1);
+    (loadedChamps as SavedChampion[]).push(champion);
+    expect(mem.loadChampions()).toHaveLength(1);
+    mem.clearCheckpoint();
+    mem.clearChampions();
+    expect(mem.loadCheckpoint()).toBeNull();
+    expect(mem.loadChampions()).toEqual([]);
+
+    const backing = new Map<string, string>();
+    const fakeStorage = {
+      getItem: (k: string): string | null => backing.get(k) ?? null,
+      setItem: (k: string, v: string): void => { backing.set(k, v); },
+      removeItem: (k: string): void => { backing.delete(k); },
+    };
+    const ls = new LocalStorageEvolutionStore('gr.evo.test', fakeStorage);
+    expect(ls.loadCheckpoint()).toBeNull();
+    expect(ls.loadChampions()).toEqual([]);
+
+    ls.saveCheckpoint(checkpoint);
+    const rehydrated = ls.loadCheckpoint()!;
+    expect(rehydrated.population[0]).toBeInstanceOf(Genome);
+    expect(rehydrated.bestEver?.genome).toBeInstanceOf(Genome);
+    expect(rehydrated.history[0]!.champion.genome).toBeInstanceOf(Genome);
+    expect(rehydrated.bestEver?.genome.weights).toEqual(g.weights);
+
+    ls.saveCheckpoint({ ...checkpoint, bestEver: null });
+    expect(ls.loadCheckpoint()?.bestEver).toBeNull();
+
+    ls.saveChampion(champion);
+    expect(ls.loadChampions()[0]!.evaluation.genome).toBeInstanceOf(Genome);
+
+    for (const key of backing.keys()) backing.set(key, '{bad-json');
+    expect(ls.loadCheckpoint()).toBeNull();
+    expect(ls.loadChampions()).toEqual([]);
+
+    for (const key of backing.keys()) backing.set(key, JSON.stringify(123));
+    expect(ls.loadCheckpoint()).toBeNull();
+    expect(ls.loadChampions()).toEqual([]);
+
+    ls.saveCheckpoint(checkpoint);
+    ls.saveChampion(champion);
+    ls.clearCheckpoint();
+    ls.clearChampions();
+    expect(ls.loadCheckpoint()).toBeNull();
+    expect(ls.loadChampions()).toEqual([]);
   });
 });

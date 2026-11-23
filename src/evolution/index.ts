@@ -7,3 +7,5 @@ export { describeGenome } from './StrategyDescriber';
 export type { StrategyDriver, StrategySummary } from './StrategyDescriber';
 export { DEFAULT_GA_CONFIG, GeneticAlgorithm } from './GeneticAlgorithm';
 export type { EvolutionStep, GaConfig, GenerationSummary } from './GeneticAlgorithm';
+export { InMemoryEvolutionStore, LocalStorageEvolutionStore } from './EvolutionStore';
+export type { EvolutionCheckpoint, EvolutionStore, SavedChampion } from './EvolutionStore';
