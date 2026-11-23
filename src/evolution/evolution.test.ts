@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { BotRegistry, RandomBot } from '../bots';
-import { CornerCoord, FLOWER_COLORS, Game } from '../game';
+import { CornerCoord, FLOWER_COLORS, Game, GameResult } from '../game';
 import type { FlowerColor } from '../game';
 import { SeededRandomSource } from '../rng';
-import { GameRunner } from '../simulation';
-import { EvolvedBot, GENE_SPECS, Genome } from './index';
+import { GameRunner, SimulationStats } from '../simulation';
+import { computeFitness, describeGenome, evaluateGenome, EvolvedBot, GENE_SPECS, Genome } from './index';
 import type { GeneWeights } from './index';
 
 describe('src/evolution', () => {
@@ -113,5 +113,56 @@ describe('src/evolution', () => {
     const move = game.validPlacements[0]!;
     expect(posBot.chooseBlooms(game, move, pending, new SeededRandomSource(1))[0]!.color).toBe(scarce);
     expect(negBot.chooseBlooms(game, move, pending, new SeededRandomSource(1))[0]!.color).toBe(common);
+  });
+
+  it('EVO-03: computeFitness uses 4*mean + median + 0.5*p95 and evaluateGenome is deterministic per seed', () => {
+    expect(computeFitness(new SimulationStats())).toBe(0);
+    const stats = new SimulationStats([
+      new GameResult({ placedFlowers: 4, remainingDrawCount: 0, placedTilesCount: 26, discardedTilesCount: 2, turnsPlayed: 27 }),
+      new GameResult({ placedFlowers: 8, remainingDrawCount: 4, placedTilesCount: 24, discardedTilesCount: 0, turnsPlayed: 23 }),
+      new GameResult({ placedFlowers: 8, remainingDrawCount: 8, placedTilesCount: 20, discardedTilesCount: 0, turnsPlayed: 19 }),
+    ]);
+    expect(computeFitness(stats)).toBeCloseTo(4 * stats.meanScore + stats.medianScore + 0.5 * stats.p95Score);
+
+    const g = Genome.heuristicSeed('eval');
+    expect(() => evaluateGenome(g, 0, 1)).toThrow();
+    expect(() => evaluateGenome(g, 1.5, 1)).toThrow();
+
+    const e1 = evaluateGenome(g, 10, 101);
+    const e2 = evaluateGenome(g, 10, 101);
+    const eOther = evaluateGenome(g, 10, 202);
+    expect(e1).toEqual(e2);
+    expect(e1.gamesPlayed).toBe(10);
+    expect(e1.fitness).toBeCloseTo(4 * e1.meanScore + e1.medianScore + 0.5 * e1.p95Score);
+    expect(e1.meanScore).not.toBe(eOther.meanScore);
+  });
+
+  it('EVO-04: describeGenome translates contrasting genomes into distinct English summaries and ranked topDrivers', () => {
+    const h = Genome.heuristicSeed('h');
+    const summaryH = describeGenome(h);
+    expect(summaryH.headline.length).toBeGreaterThan(0);
+    expect(summaryH.bullets.length).toBeGreaterThanOrEqual(4);
+    expect(summaryH.topDrivers.length).toBeGreaterThanOrEqual(3);
+    for (let i = 1; i < summaryH.topDrivers.length; i += 1) {
+      expect(Math.abs(summaryH.topDrivers[i - 1]!.normalizedWeight)).toBeGreaterThanOrEqual(
+        Math.abs(summaryH.topDrivers[i]!.normalizedWeight),
+      );
+    }
+
+    const contrast = new Genome('contrast', {
+      ...h.weights,
+      immediateBloomWeight: -20,
+      bloomUrgencyLateSlope: -80,
+      deadPocket2Penalty: 15,
+      deadPocket3Penalty: 15,
+      deadPocket4Penalty: 15,
+      boundingBoxGrowthWeight: 18,
+      neighborCountWeight: -20,
+      bloomScarcityPriority: -40,
+      bloomFrontierScarcityPriority: -40,
+    });
+    const summaryC = describeGenome(contrast);
+    expect(summaryC.headline).not.toBe(summaryH.headline);
+    expect(summaryC.bullets).not.toEqual(summaryH.bullets);
   });
 });
