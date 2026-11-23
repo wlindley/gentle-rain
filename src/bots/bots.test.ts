@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { CornerCoord, Game, GridCoord, TileCatalog } from '../game';
 import type { FlowerColor } from '../game';
 import { SeededRandomSource, StubRandomSource } from '../rng';
-import { BloomAssignmentSolver, GreedyBloomBot, RandomBot } from './index';
+import { BloomAssignmentSolver, BotRegistry, GreedyBloomBot, HeuristicBot, RandomBot } from './index';
 import type { Bot } from './index';
 
 describe('src/bots', () => {
@@ -132,5 +132,55 @@ describe('src/bots', () => {
     for (let s = 1; s <= 5; s += 1) {
       expect(playBotGame(bot, s).isComplete).toBe(true);
     }
+  });
+
+  it('BOT-05: HeuristicBot prefers immediate blooms and outperforms RandomBot on a 50-game seeded suite', () => {
+    const heuristic = new HeuristicBot();
+    const random = new RandomBot();
+    expect(heuristic.id).toBe('heuristic');
+
+    const gBloom = makeOrderedGame([0, 1, 2, 25]);
+    gBloom.applyMove({ coord: new GridCoord(1, 0), rotation: 3 });
+    gBloom.applyMove({ coord: new GridCoord(0, 1), rotation: 3 });
+    const chosen = heuristic.choosePlacement(gBloom, new SeededRandomSource(1));
+    expect(chosen).toEqual({ coord: new GridCoord(1, 1), rotation: 0 });
+    expect(
+      heuristic.chooseBlooms(gBloom, chosen, gBloom.eligibleBloomsFor(chosen), new SeededRandomSource(1)),
+    ).toHaveLength(1);
+
+    let heuristicTotal = 0;
+    let randomTotal = 0;
+    const base = new SeededRandomSource(1000);
+    for (let i = 0; i < 50; i += 1) {
+      const seed = base.derive(i).seed;
+      const gH = playBotGame(heuristic, seed);
+      const gR = playBotGame(random, seed);
+      expect(gH.isComplete).toBe(true);
+      heuristicTotal += gH.score;
+      randomTotal += gR.score;
+    }
+    expect(heuristicTotal / 50).toBeGreaterThan(randomTotal / 50);
+  });
+
+  it('BOT-06: BotRegistry provides 3 default bots, registers custom bots, and rejects unknown or duplicate IDs', () => {
+    const registry = BotRegistry.createDefault();
+    expect(registry.bots.map((b) => b.id)).toEqual(['random', 'greedy-bloom', 'heuristic']);
+    expect(registry.find('heuristic')?.id).toBe('heuristic');
+    expect(registry.require('random').id).toBe('random');
+    expect(registry.find('missing')).toBeUndefined();
+    expect(() => registry.require('missing')).toThrow();
+
+    const custom: Bot = {
+      id: 'custom-bot',
+      name: 'Custom Bot',
+      description: 'Test custom bot',
+      choosePlacement: (view) => view.validPlacements[0]!,
+      chooseBlooms: (_view, _p, pending) => BloomAssignmentSolver.solve(pending),
+    };
+    registry.register(custom);
+    expect(registry.require('custom-bot')).toBe(custom);
+    expect(registry.bots).toHaveLength(4);
+    expect(() => registry.register(custom)).toThrow();
+    expect(() => new BotRegistry([custom, custom])).toThrow();
   });
 });
