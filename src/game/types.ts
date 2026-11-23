@@ -74,6 +74,20 @@ export interface PendingCornerBloom {
   readonly eligibleColors: readonly FlowerColor[];
 }
 
+export interface GameSnapshot {
+  readonly placedTiles: readonly PlacedTile[];
+  readonly placedBlooms: readonly BloomPlacement[];
+  readonly currentTile: PondTile | null;
+  readonly discardedTiles: readonly PondTile[];
+  readonly unplayedFlowers: readonly FlowerColor[];
+  readonly remainingDrawCount: number;
+  readonly turnNumber: number;
+  readonly isComplete: boolean;
+  readonly isWin: boolean;
+  readonly score: number;
+  readonly bounds: BoardBounds;
+}
+
 export type TurnOutcome =
   | {
       readonly kind: 'placed';

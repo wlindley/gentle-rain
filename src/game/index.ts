@@ -5,6 +5,7 @@ export type {
   CompletedCorner,
   FlowerColor,
   FrontierConstraint,
+  GameSnapshot,
   PendingCornerBloom,
   PlacedTile,
   PlacementPreview,
@@ -19,3 +20,4 @@ export { Board } from './Board';
 export type { ReadonlyBoardView } from './Board';
 export { Game } from './Game';
 export type { GameView } from './Game';
+export { GameResult } from './GameResult';

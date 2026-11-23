@@ -1,9 +1,10 @@
 import type { RandomSource } from '../rng';
 import { Board, type ReadonlyBoardView } from './Board';
+import { GameResult } from './GameResult';
 import { PondTile } from './PondTile';
 import { TileCatalog } from './TileCatalog';
 import { FLOWER_COLORS } from './types';
-import type { BloomPlacement, FlowerColor, PendingCornerBloom, TilePlacement, TurnOutcome } from './types';
+import type { BloomPlacement, FlowerColor, GameSnapshot, PendingCornerBloom, TilePlacement, TurnOutcome } from './types';
 
 export interface GameView {
   readonly board: ReadonlyBoardView;
@@ -37,12 +38,37 @@ export class Game implements GameView {
   get validPlacements(): readonly TilePlacement[] { return this._validPlacements; }
   get unplayedFlowers(): ReadonlySet<FlowerColor> { return this._unplayedFlowers; }
   get remainingDrawCount(): number { return this.deck.length - this.drawIndex; }
-  get discardedTiles(): readonly PondTile[] { return this._discardedTiles; }
-  get unseenTiles(): readonly PondTile[] { return this.deck.slice(this.drawIndex); }
+  get discardedTiles(): readonly PondTile[] { return [...this._discardedTiles]; }
+  get unseenTiles(): readonly PondTile[] { return this.deck.slice(this.drawIndex).sort((a, b) => a.id - b.id); }
   get turnNumber(): number { return this._turnNumber; }
   get isWin(): boolean { return this._board.placedBloomCount === FLOWER_COLORS.length; }
   get isComplete(): boolean { return this.isWin || this._currentTile === null; }
-  get score(): number { return this._board.placedBloomCount + this.remainingDrawCount; }
+  get score(): number { return this.isWin ? this._board.placedBloomCount + this.remainingDrawCount : this._board.placedBloomCount; }
+  get result(): GameResult | null {
+    if (!this.isComplete) return null;
+    return new GameResult({
+      placedFlowers: this._board.placedBloomCount,
+      remainingDrawCount: this.remainingDrawCount,
+      placedTilesCount: this._board.placedTileCount,
+      discardedTilesCount: this._discardedTiles.length,
+      turnsPlayed: this._turnNumber,
+    });
+  }
+  toSnapshot(): GameSnapshot {
+    return {
+      placedTiles: [...this._board.placedTiles],
+      placedBlooms: [...this._board.placedBlooms],
+      currentTile: this._currentTile,
+      discardedTiles: [...this._discardedTiles],
+      unplayedFlowers: Array.from(this._unplayedFlowers),
+      remainingDrawCount: this.remainingDrawCount,
+      turnNumber: this._turnNumber,
+      isComplete: this.isComplete,
+      isWin: this.isWin,
+      score: this.score,
+      bounds: { ...this._board.bounds },
+    };
+  }
   eligibleBloomsFor(placement: TilePlacement): readonly PendingCornerBloom[] {
     const tile = this.requireActiveTile();
     return this._board.previewPlacement(tile, placement).completedCorners.map(({ corner, adjacentColors }) => ({
@@ -79,7 +105,7 @@ export class Game implements GameView {
     return { kind: 'discarded', tile };
   }
   private requireActiveTile(): PondTile {
-    if (this.isComplete || !this._currentTile) throw new Error('Game is already complete');
+    if (!this._currentTile) throw new Error('Game is already complete');
     return this._currentTile;
   }
   private advanceTurn(): void {

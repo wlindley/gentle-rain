@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { SeededRandomSource, StubRandomSource } from '../rng';
 import {
+  BloomPlacement,
   Board,
   CornerCoord,
   Direction,
   FLOWER_COLORS,
   FlowerColor,
   Game,
+  GameResult,
   GridCoord,
   PondTile,
   TileCatalog,
@@ -376,5 +378,102 @@ describe('src/game', () => {
     expect(unplaceable.discardedTiles).toEqual([drawn]);
     expect(unplaceable.turnNumber).toBe(1);
     expect(unplaceable.remainingDrawCount).toBe(25);
+  });
+
+  const playToEnd = (seed: number, preferBloom: boolean): Game => {
+    const game = Game.create(new SeededRandomSource(seed));
+    while (!game.isComplete) {
+      const moves = game.validPlacements;
+      if (moves.length === 0) { game.discardCurrentTile(); continue; }
+      let best = moves[0]!;
+      let bestScore = -Infinity;
+      for (const m of moves) {
+        const preview = game.board.previewPlacement(game.currentTile!, m);
+        const bloomable = game.eligibleBloomsFor(m).filter((c) => c.eligibleColors.length > 0).length;
+        const val = preferBloom
+          ? bloomable * 10 + preview.neighborCount
+          : -preview.completedCorners.length * 100 - preview.neighborCount;
+        if (val > bestScore) { bestScore = val; best = m; }
+      }
+      const pending = game.eligibleBloomsFor(best);
+      const blooms: BloomPlacement[] = [];
+      const used = new Set<FlowerColor>();
+      for (const p of [...pending].sort((a, b) => a.eligibleColors.length - b.eligibleColors.length)) {
+        const color = p.eligibleColors.find((c) => !used.has(c));
+        if (color) { used.add(color); blooms.push({ corner: p.corner, color }); }
+      }
+      game.applyMove(best, blooms);
+    }
+    return game;
+  };
+
+  it('GAME-16: Early Victory ends immediately on 8th bloom with score = 8 + remainingDrawCount and rejects further moves', () => {
+    let game: Game | undefined;
+    for (let s = 1; s <= 50; s += 1) {
+      const candidate = playToEnd(s, true);
+      if (candidate.isWin && candidate.remainingDrawCount > 0) { game = candidate; break; }
+    }
+    expect(game).toBeDefined();
+    expect(game!.isComplete).toBe(true);
+    expect(game!.isWin).toBe(true);
+    expect(game!.currentTile).toBeNull();
+    expect(game!.validPlacements).toEqual([]);
+    expect(game!.remainingDrawCount).toBeGreaterThan(0);
+    expect(game!.score).toBe(8 + game!.remainingDrawCount);
+
+    const res = game!.result!;
+    expect(res).not.toBeNull();
+    expect(res.isWin).toBe(true);
+    expect(res.placedFlowers).toBe(8);
+    expect(res.score).toBe(8 + game!.remainingDrawCount);
+    expect(() => game!.discardCurrentTile()).toThrow();
+    expect(() => game!.applyMove({ coord: new GridCoord(0, 0), rotation: 0 })).toThrow();
+    expect(() => game!.eligibleBloomsFor({ coord: new GridCoord(0, 0), rotation: 0 })).toThrow();
+  });
+
+  it('GAME-17: Deck Exhaustion ends with isWin=false, remainingDrawCount=0, and score=placedFlowers', () => {
+    const game = playToEnd(1, false);
+    expect(game.isComplete).toBe(true);
+    expect(game.isWin).toBe(false);
+    expect(game.currentTile).toBeNull();
+    expect(game.remainingDrawCount).toBe(0);
+    expect(game.board.placedBloomCount).toBeLessThan(8);
+    expect(game.score).toBe(game.board.placedBloomCount);
+
+    const res = game.result!;
+    expect(res).not.toBeNull();
+    expect(res.isWin).toBe(false);
+    expect(res.score).toBe(res.placedFlowers);
+    expect(res.placedTilesCount + res.discardedTilesCount).toBe(28);
+  });
+
+  it('GAME-18: Game.result is null until complete and Game.toSnapshot returns an immutable detached snapshot', () => {
+    const winRes = new GameResult({ placedFlowers: 8, remainingDrawCount: 5, placedTilesCount: 22, discardedTilesCount: 1, turnsPlayed: 22 });
+    expect(winRes.score).toBe(13);
+    expect(winRes.isWin).toBe(true);
+    const lossRes = new GameResult({ placedFlowers: 6, remainingDrawCount: 0, placedTilesCount: 25, discardedTilesCount: 3, turnsPlayed: 27 });
+    expect(lossRes.score).toBe(6);
+    expect(lossRes.isWin).toBe(false);
+
+    const game = makeOrderedGame([0, 1]);
+    expect(game.result).toBeNull();
+    const snap0 = game.toSnapshot();
+    expect(snap0.placedTiles).toHaveLength(1);
+    expect(snap0.placedBlooms).toEqual([]);
+    expect(snap0.unplayedFlowers).toHaveLength(8);
+    expect(snap0.remainingDrawCount).toBe(26);
+    expect(snap0.turnNumber).toBe(0);
+    expect(snap0.isComplete).toBe(false);
+    expect(snap0.isWin).toBe(false);
+    expect(snap0.bounds).toEqual({ minX: 0, maxX: 0, minY: 0, maxY: 0 });
+
+    game.applyMove(game.validPlacements[0]!);
+    const snap1 = game.toSnapshot();
+    expect(snap0.placedTiles).toHaveLength(1);
+    expect(snap0.turnNumber).toBe(0);
+    expect(snap0.remainingDrawCount).toBe(26);
+    expect(snap1.placedTiles).toHaveLength(2);
+    expect(snap1.turnNumber).toBe(1);
+    expect(snap1.remainingDrawCount).toBe(25);
   });
 });
