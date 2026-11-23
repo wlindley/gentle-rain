@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MathRandomSource, StubRandomSource } from './index';
+import { MathRandomSource, SeededRandomSource, StubRandomSource } from './index';
 
 describe('src/rng', () => {
   it('RNG-01: StubRandomSource returns FIFO floats and maps nextInt via Math.floor(float * n)', () => {
@@ -45,6 +45,54 @@ describe('src/rng', () => {
     expect(smallRng.shuffle([])).toEqual([]);
     expect(smallRng.shuffle([42])).toEqual([42]);
     expect(smallRng.nextFloat()).toBe(0.5);
+  });
+
+  it('RNG-05: SeededRandomSource is deterministic, validates integer seeds/offsets, and derives independent child streams', () => {
+    const rngA = new SeededRandomSource(42);
+    const rngB = new SeededRandomSource(42);
+    const rngOther = new SeededRandomSource(43);
+
+    expect(rngA.seed).toBe(42);
+
+    const floatsA = Array.from({ length: 10 }, () => rngA.nextFloat());
+    const floatsB = Array.from({ length: 10 }, () => rngB.nextFloat());
+    const floatsOther = Array.from({ length: 10 }, () => rngOther.nextFloat());
+
+    for (const value of floatsA) {
+      expect(value).toBeGreaterThanOrEqual(0);
+      expect(value).toBeLessThan(1);
+    }
+    expect(floatsA).toEqual(floatsB);
+    expect(floatsA).not.toEqual(floatsOther);
+
+    const intsA = Array.from({ length: 10 }, () => rngA.nextInt(100));
+    const intsB = Array.from({ length: 10 }, () => rngB.nextInt(100));
+    expect(intsA).toEqual(intsB);
+
+    const items = [1, 2, 3, 4, 5, 6, 7, 8];
+    expect(rngA.shuffle(items)).toEqual(rngB.shuffle(items));
+
+    expect(() => new SeededRandomSource(1.5)).toThrow();
+    expect(() => new SeededRandomSource(Number.NaN)).toThrow();
+    expect(() => new SeededRandomSource(Number.POSITIVE_INFINITY)).toThrow();
+
+    const base = new SeededRandomSource(100);
+    expect(() => base.derive(0.5)).toThrow();
+    expect(() => base.derive(Number.NaN)).toThrow();
+
+    const child1a = base.derive(1);
+    const child1b = new SeededRandomSource(100).derive(1);
+    const child2 = base.derive(2);
+
+    expect(Number.isInteger(child1a.seed)).toBe(true);
+    expect(child1a.seed).toBe(child1b.seed);
+
+    const stream1a = Array.from({ length: 8 }, () => child1a.nextFloat());
+    const stream1b = Array.from({ length: 8 }, () => child1b.nextFloat());
+    const stream2 = Array.from({ length: 8 }, () => child2.nextFloat());
+
+    expect(stream1a).toEqual(stream1b);
+    expect(stream1a).not.toEqual(stream2);
   });
 
   it('RNG-06: MathRandomSource returns values in [0, 1) with default and injected floatFn', () => {
