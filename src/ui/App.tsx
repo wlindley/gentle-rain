@@ -10,7 +10,8 @@ import { SimulationGridCanvas } from './SimulationGridCanvas';
 import { StatsPanel } from './StatsPanel';
 
 const randomSeed = (): number => Math.floor(Math.random() * 1_000_000);
-const TURNS_PER_FRAME: Record<Exclude<SpeedMode, 'turbo'>, number> = { '1x': 1, '4x': 3, '20x': 12 };
+const TURNS_PER_FRAME: Record<'1x' | '4x' | '20x', number> = { '1x': 1, '4x': 3, '20x': 12 };
+const SLOW_STEP_INTERVAL_MS = 167; // 1/10th of 60fps 1x (~6 turns/sec)
 
 export function App() {
   const registry = useMemo(() => BotRegistry.createDefault(), []);
@@ -35,6 +36,7 @@ export function App() {
   const tournamentRef = useRef<TournamentRunner | null>(null);
   const savedRef = useRef(false);
   const rateRef = useRef({ lastTime: performance.now(), lastCompleted: 0 });
+  const lastSlowStepRef = useRef(0);
   const speedRef = useRef(speed);
   speedRef.current = speed;
 
@@ -91,15 +93,22 @@ export function App() {
 
       const session = sessionRef.current;
       if (!session) return;
+      const now = performance.now();
       const mode = speedRef.current;
       if (mode === 'turbo') {
-        const deadline = performance.now() + 10;
+        const deadline = now + 10;
         while (!session.isComplete && performance.now() < deadline) session.stepGames(25);
+      } else if (mode === '0.1x') {
+        if (now - lastSlowStepRef.current < SLOW_STEP_INTERVAL_MS) {
+          rafId = requestAnimationFrame(frame);
+          return;
+        }
+        lastSlowStepRef.current = now;
+        session.stepTurns(1);
       } else {
         session.stepTurns(TURNS_PER_FRAME[mode]);
       }
 
-      const now = performance.now();
       const dt = (now - rateRef.current.lastTime) / 1000;
       if (dt >= 0.25 || session.isComplete) {
         setGamesPerSec(dt > 0 ? (session.completedGames - rateRef.current.lastCompleted) / dt : 0);

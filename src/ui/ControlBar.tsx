@@ -1,6 +1,6 @@
 import type { Bot } from '../bots';
 
-export type SpeedMode = '1x' | '4x' | '20x' | 'turbo';
+export type SpeedMode = '0.1x' | '1x' | '4x' | '20x' | 'turbo';
 
 export interface ControlBarProps {
   readonly bots: readonly Bot[];
@@ -56,6 +56,7 @@ export function ControlBar(props: ControlBarProps) {
       <label className="field">
         Speed
         <select value={props.speed} onChange={(e) => props.onSpeedChange(e.target.value as SpeedMode)}>
+          <option value="0.1x">0.1× (Slow)</option>
           <option value="1x">1× (Watch)</option>
           <option value="4x">4× (Fast)</option>
           <option value="20x">20× (Rapid)</option>

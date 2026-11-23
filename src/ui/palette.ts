@@ -19,13 +19,17 @@ export const FLOWER_PALETTE: Record<FlowerColor, FlowerStyle> = {
 };
 
 export const POND_THEME = {
-  waterBg: '#0b1c22',
-  cellBg: '#10262e',
-  cellWinBg: '#133138',
-  tileFill: '#1c3e48',
-  tileStroke: '#316270',
-  cutoutFill: '#0b1c22',
-  winBorder: '#e7c56b',
-  activeBorder: '#4ca6b8',
-  textMuted: '#93b4be',
+  waterBg: '#dce9ed',
+  cellBg: '#edf4f6',
+  cellWinBg: '#f9f4e1',
+  tileFill: '#345b66',
+  tileStroke: '#203d46',
+  cutoutFill: '#edf4f6',
+  winBorder: '#c9921a',
+  cellBorder: '#c2d5dc',
+  badgeBg: 'rgba(255, 255, 255, 0.9)',
+  badgeText: '#142c35',
+  badgeWinText: '#8a5f00',
+  activeBorder: '#1f7a8c',
+  textMuted: '#4b6873',
 } as const;

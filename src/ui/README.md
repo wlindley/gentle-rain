@@ -15,7 +15,7 @@ npm run preview  # Preview the production bundle locally
 
 ### Dashboard Features
 - **Live Parallel Pond Grid**: Displays 16, 36, 64, or 100 active boards playing simultaneously on a high-DPI HTML5 Canvas, recycling finished boards until the target game count completes.
-- **Speed Controls**: Switch seamlessly between `1×` (watch turn-by-turn), `4×`, `20×`, and `Turbo` (time-sliced batch execution completing thousands of games per second without freezing the UI).
+- **Speed Controls**: Switch seamlessly between `0.1×` (slow ~6 turns/sec to follow individual tile placements and blooms), `1×`, `4×`, `20×`, and `Turbo` (time-sliced batch execution completing thousands of games per second without freezing the UI).
 - **Seed Parity**: Enable **Fixed Seed** so different bots face the exact same sequence of shuffled 28-tile decks.
 - **Live Telemetry & Histograms**: Tracks Win Rate (8/8 blooms), Mean, Median, `p95`, `p99`, Min/Max score, Avg Blooms, Avg Discards, Score Distribution, and Blooms Placed (0–8).
 - **Board Inspector**: Click any live mini-board—or **Inspect Best** / **Inspect Worst**—to open a zoomed high-detail `<dialog>` view of that board.

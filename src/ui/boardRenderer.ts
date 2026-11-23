@@ -84,7 +84,7 @@ export function renderBoardSnapshot(
       }
     }
 
-    ctx.fillStyle = POND_THEME.cutoutFill;
+    ctx.fillStyle = snapshot.isWin ? POND_THEME.cellWinBg : POND_THEME.cutoutFill;
     for (const [cx, cy] of CORNERS) {
       ctx.beginPath();
       ctx.arc(tx + cx * tileSize, ty + cy * tileSize, cutoutR, 0, Math.PI * 2);
@@ -124,17 +124,17 @@ export function renderBoardSnapshot(
   if (options.badgeText) {
     const fontSize = Math.max(9, Math.min(12, Math.floor(height * 0.12)));
     ctx.font = `600 ${fontSize}px system-ui, sans-serif`;
-    ctx.fillStyle = 'rgba(8, 21, 26, 0.78)';
+    ctx.fillStyle = POND_THEME.badgeBg;
     const metrics = ctx.measureText(options.badgeText);
     const bw = metrics.width + 8;
     const bh = fontSize + 6;
     ctx.fillRect(x + 4, y + 4, bw, bh);
-    ctx.fillStyle = snapshot.isWin ? POND_THEME.winBorder : '#dcebf0';
+    ctx.fillStyle = snapshot.isWin ? POND_THEME.badgeWinText : POND_THEME.badgeText;
     ctx.textBaseline = 'top';
     ctx.fillText(options.badgeText, x + 8, y + 7);
   }
 
-  ctx.strokeStyle = snapshot.isWin ? POND_THEME.winBorder : '#1d3c47';
+  ctx.strokeStyle = snapshot.isWin ? POND_THEME.winBorder : POND_THEME.cellBorder;
   ctx.lineWidth = snapshot.isWin ? 2 : 1;
   ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
   ctx.restore();
