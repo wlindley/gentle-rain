@@ -5,7 +5,7 @@ export default defineConfig({
     include: ['src/**/*.test.ts'],
     coverage: {
       provider: 'v8',
-      include: ['src/{rng,game,bots,simulation}/**/*.ts'],
+      include: ['src/{rng,game,bots,simulation,evolution}/**/*.ts'],
       exclude: ['src/**/*.test.ts', 'src/**/index.ts'],
       reporter: ['text', 'html'],
     },
