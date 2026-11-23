@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GreedyBloomBot, RandomBot } from '../bots';
+import { BotRegistry, GreedyBloomBot, RandomBot } from '../bots';
 import { GameResult } from '../game';
 import {
   GameRunner,
@@ -7,6 +7,7 @@ import {
   LocalStorageScoreStore,
   SimulationSession,
   SimulationStats,
+  TournamentRunner,
 } from './index';
 import type { BotRunRecord } from './index';
 
@@ -232,5 +233,29 @@ describe('src/simulation', () => {
     const store = new InMemoryScoreStore();
     store.save(explicit);
     expect(store.loadAll()).toEqual([explicit]);
+  });
+
+  it('SIM-07: TournamentRunner runs all bots on identical seeds and ranks summaries by meanScore descending', () => {
+    const bots = BotRegistry.createDefault().bots;
+    const tournament = new TournamentRunner(bots, 20, 4, 2026);
+    expect(() => new TournamentRunner([], 10, 2, 1)).toThrow();
+    expect(tournament.sessions).toHaveLength(3);
+    expect(tournament.isComplete).toBe(false);
+
+    while (!tournament.isComplete) {
+      tournament.stepGamesAll(5);
+    }
+    expect(tournament.isComplete).toBe(true);
+    for (const session of tournament.sessions) {
+      expect(session.completedGames).toBe(20);
+      expect(session.config.baseSeed).toBe(2026);
+    }
+
+    const ranked = tournament.rankedSummaries;
+    expect(ranked).toHaveLength(3);
+    expect(ranked[0]!.stats.meanScore).toBeGreaterThanOrEqual(ranked[1]!.stats.meanScore);
+    expect(ranked[1]!.stats.meanScore).toBeGreaterThanOrEqual(ranked[2]!.stats.meanScore);
+    expect(ranked[2]!.bot.id).toBe('random');
+    expect(ranked[0]!.stats.meanScore).toBeGreaterThan(ranked[2]!.stats.meanScore);
   });
 });
