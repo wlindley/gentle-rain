@@ -106,13 +106,16 @@ export class Genome {
     );
   }
 
-  static fromJSON(raw: string): Genome {
-    const data: unknown = JSON.parse(raw);
-    if (!data || typeof data !== 'object' || Array.isArray(data) || !('weights' in data) || !data.weights || typeof data.weights !== 'object') {
+  static fromSerialized(raw: unknown): Genome {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw) || !('weights' in raw) || !raw.weights || typeof raw.weights !== 'object') {
       throw new RangeError('Invalid serialized genome');
     }
-    const obj = data as Partial<SerializedGenome>;
+    const obj = raw as Partial<SerializedGenome>;
     return new Genome(obj.id as string, obj.weights!, obj.generation);
+  }
+
+  static fromJSON(raw: string): Genome {
+    return Genome.fromSerialized(JSON.parse(raw));
   }
 
   toJSON(): SerializedGenome {

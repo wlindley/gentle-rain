@@ -3,6 +3,9 @@ import { SimulationSession } from '../simulation';
 import type { SimulationStats } from '../simulation';
 import { EvolvedBot } from './EvolvedBot';
 import { Genome } from './Genome';
+import type { SerializedGenome } from './Genome';
+
+export type FitnessFunction = (stats: SimulationStats) => number;
 
 export interface GenomeEvaluation {
   readonly genome: Genome;
@@ -18,6 +21,10 @@ export interface GenomeEvaluation {
   readonly meanBlooms: number;
 }
 
+export type SerializedGenomeEvaluation = Omit<GenomeEvaluation, 'genome'> & {
+  readonly genome: SerializedGenome;
+};
+
 export function computeFitness(stats: SimulationStats): number {
   return 4 * stats.meanScore + stats.medianScore + 0.5 * stats.p95Score;
 }
@@ -27,6 +34,7 @@ export function evaluateGenome(
   gamesPerGenome: number,
   generationSeed: number,
   catalog?: TileCatalog,
+  fitnessFn: FitnessFunction = computeFitness,
 ): GenomeEvaluation {
   if (!Number.isInteger(gamesPerGenome) || gamesPerGenome <= 0) {
     throw new RangeError(`gamesPerGenome must be a positive integer, received ${gamesPerGenome}`);
@@ -44,7 +52,7 @@ export function evaluateGenome(
     genome,
     generation: genome.generation,
     gamesPlayed: stats.totalGames,
-    fitness: computeFitness(stats),
+    fitness: fitnessFn(stats),
     winRate: stats.winRate,
     meanScore: stats.meanScore,
     medianScore: stats.medianScore,

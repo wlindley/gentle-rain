@@ -1,4 +1,5 @@
-import type { GenomeEvaluation } from './Fitness';
+import { JsonKeyStore, type StorageLike } from '../simulation';
+import type { GenomeEvaluation, SerializedGenomeEvaluation } from './Fitness';
 import type { GaConfig, GenerationSummary } from './GeneticAlgorithm';
 import { Genome } from './Genome';
 import type { SerializedGenome } from './Genome';
@@ -18,26 +19,47 @@ export interface EvolutionCheckpoint {
   readonly bestEver: GenomeEvaluation | null;
 }
 
-export interface EvolutionStore {
+export interface CheckpointStore {
   loadCheckpoint(): EvolutionCheckpoint | null;
   saveCheckpoint(checkpoint: EvolutionCheckpoint): void;
   clearCheckpoint(): void;
+}
+
+export interface ChampionStore {
   loadChampions(): readonly SavedChampion[];
   saveChampion(champion: SavedChampion): void;
   clearChampions(): void;
 }
 
-const reviveGenome = (raw: SerializedGenome): Genome => new Genome(raw.id, raw.weights, raw.generation);
-const reviveEvaluation = (e: GenomeEvaluation): GenomeEvaluation => ({ ...e, genome: reviveGenome(e.genome) });
-const reviveSummary = (s: GenerationSummary): GenerationSummary => ({ ...s, champion: reviveEvaluation(s.champion) });
-const reviveCheckpoint = (cp: EvolutionCheckpoint): EvolutionCheckpoint => ({
+export interface EvolutionStore extends CheckpointStore, ChampionStore {}
+
+type SerializedSummary = Omit<GenerationSummary, 'champion'> & { readonly champion: SerializedGenomeEvaluation };
+type SerializedCheckpoint = Omit<EvolutionCheckpoint, 'population' | 'history' | 'bestEver'> & {
+  readonly population: readonly SerializedGenome[];
+  readonly history: readonly SerializedSummary[];
+  readonly bestEver: SerializedGenomeEvaluation | null;
+};
+type SerializedChampion = Omit<SavedChampion, 'evaluation'> & { readonly evaluation: SerializedGenomeEvaluation };
+
+const reviveEvaluation = (e: GenomeEvaluation | SerializedGenomeEvaluation): GenomeEvaluation => ({
+  ...e,
+  genome: Genome.fromSerialized(e.genome),
+});
+const reviveSummary = (s: GenerationSummary | SerializedSummary): GenerationSummary => ({
+  ...s,
+  champion: reviveEvaluation(s.champion),
+});
+const reviveCheckpoint = (cp: EvolutionCheckpoint | SerializedCheckpoint): EvolutionCheckpoint => ({
   config: { ...cp.config },
   generation: cp.generation,
-  population: cp.population.map(reviveGenome),
+  population: cp.population.map((g) => Genome.fromSerialized(g)),
   history: cp.history.map(reviveSummary),
   bestEver: cp.bestEver ? reviveEvaluation(cp.bestEver) : null,
 });
-const reviveChampion = (c: SavedChampion): SavedChampion => ({ ...c, evaluation: reviveEvaluation(c.evaluation) });
+const reviveChampion = (c: SavedChampion | SerializedChampion): SavedChampion => ({
+  ...c,
+  evaluation: reviveEvaluation(c.evaluation),
+});
 
 export class InMemoryEvolutionStore implements EvolutionStore {
   private checkpoint: EvolutionCheckpoint | null = null;
@@ -52,56 +74,43 @@ export class InMemoryEvolutionStore implements EvolutionStore {
 }
 
 export class LocalStorageEvolutionStore implements EvolutionStore {
-  private readonly checkpointKey: string;
-  private readonly championsKey: string;
+  private readonly checkpointStore: JsonKeyStore<EvolutionCheckpoint>;
+  private readonly championsStore: JsonKeyStore<SavedChampion[]>;
 
-  constructor(
-    prefix = 'gentle-rain:evolution:v1',
-    private readonly storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> = globalThis.localStorage,
-  ) {
-    this.checkpointKey = `${prefix}:checkpoint`;
-    this.championsKey = `${prefix}:champions`;
+  constructor(prefix = 'gentle-rain:evolution:v1', storage?: StorageLike) {
+    this.checkpointStore = new JsonKeyStore<EvolutionCheckpoint>(`${prefix}:checkpoint`, storage);
+    this.championsStore = new JsonKeyStore<SavedChampion[]>(`${prefix}:champions`, storage);
   }
 
   loadCheckpoint(): EvolutionCheckpoint | null {
-    const raw = this.storage.getItem(this.checkpointKey);
-    if (raw === null) return null;
-    try {
-      const parsed: unknown = JSON.parse(raw);
-      if (!parsed || typeof parsed !== 'object' || !Array.isArray((parsed as EvolutionCheckpoint).population)) {
-        return null;
-      }
-      return reviveCheckpoint(parsed as EvolutionCheckpoint);
-    } catch {
-      return null;
-    }
+    return this.checkpointStore.read((parsed) =>
+      parsed && typeof parsed === 'object' && Array.isArray((parsed as Partial<SerializedCheckpoint>).population)
+        ? reviveCheckpoint(parsed as SerializedCheckpoint)
+        : null,
+    );
   }
 
   saveCheckpoint(checkpoint: EvolutionCheckpoint): void {
-    this.storage.setItem(this.checkpointKey, JSON.stringify(reviveCheckpoint(checkpoint)));
+    this.checkpointStore.write(reviveCheckpoint(checkpoint));
   }
 
   clearCheckpoint(): void {
-    this.storage.removeItem(this.checkpointKey);
+    this.checkpointStore.clear();
   }
 
   loadChampions(): readonly SavedChampion[] {
-    const raw = this.storage.getItem(this.championsKey);
-    if (raw === null) return [];
-    try {
-      const parsed: unknown = JSON.parse(raw);
-      return Array.isArray(parsed) ? (parsed as SavedChampion[]).map(reviveChampion) : [];
-    } catch {
-      return [];
-    }
+    return (
+      this.championsStore.read((parsed) =>
+        Array.isArray(parsed) ? (parsed as SerializedChampion[]).map(reviveChampion) : null,
+      ) ?? []
+    );
   }
 
   saveChampion(champion: SavedChampion): void {
-    const updated = [...this.loadChampions(), reviveChampion(champion)];
-    this.storage.setItem(this.championsKey, JSON.stringify(updated));
+    this.championsStore.write([...this.loadChampions(), reviveChampion(champion)]);
   }
 
   clearChampions(): void {
-    this.storage.removeItem(this.championsKey);
+    this.championsStore.clear();
   }
 }

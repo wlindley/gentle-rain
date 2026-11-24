@@ -41,7 +41,7 @@ export class EvolutionWorkerPool {
           if (msg.jobId !== jobId) return;
           const revived: GenomeEvaluation = {
             ...msg.evaluation,
-            genome: new Genome(msg.evaluation.genome.id, msg.evaluation.genome.weights, msg.evaluation.genome.generation),
+            genome: Genome.fromSerialized(msg.evaluation.genome),
           };
           results[msg.index] = revived;
           completed += 1;

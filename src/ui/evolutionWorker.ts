@@ -1,5 +1,5 @@
 import { evaluateGenome, Genome } from '../evolution';
-import type { GenomeEvaluation, SerializedGenome } from '../evolution';
+import type { SerializedGenome, SerializedGenomeEvaluation } from '../evolution';
 
 export interface WorkerRequest {
   readonly jobId: number;
@@ -12,13 +12,12 @@ export interface WorkerRequest {
 export interface WorkerResponse {
   readonly jobId: number;
   readonly index: number;
-  readonly evaluation: Omit<GenomeEvaluation, 'genome'> & { readonly genome: SerializedGenome };
+  readonly evaluation: SerializedGenomeEvaluation;
 }
 
 self.onmessage = (event: MessageEvent<WorkerRequest>) => {
   const { jobId, index, genome: raw, gamesPerGenome, generationSeed } = event.data;
-  const genome = new Genome(raw.id, raw.weights, raw.generation);
-  const result = evaluateGenome(genome, gamesPerGenome, generationSeed);
+  const result = evaluateGenome(Genome.fromSerialized(raw), gamesPerGenome, generationSeed);
   const response: WorkerResponse = {
     jobId,
     index,
