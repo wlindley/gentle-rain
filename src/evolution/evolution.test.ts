@@ -4,6 +4,7 @@ import { CornerCoord, FLOWER_COLORS, Game, GameResult } from '../game';
 import type { FlowerColor } from '../game';
 import { SeededRandomSource } from '../rng';
 import { GameRunner, SimulationStats } from '../simulation';
+import type { StorageLike } from '../simulation';
 import {
   computeFitness,
   DEFAULT_GA_CONFIG,
@@ -16,10 +17,10 @@ import {
   InMemoryEvolutionStore,
   LocalStorageEvolutionStore,
 } from './index';
-import type { EvolutionCheckpoint, GenomeEvaluation, GeneWeights, SavedChampion } from './index';
+import type { EvolutionCheckpoint, FitnessFunction, GenomeEvaluation, GeneWeights, SavedChampion } from './index';
 
-describe('src/evolution', () => {
-  it('EVO-01: Genome validates/clamps 20 gene weights, seeds deterministically, and round-trips JSON', () => {
+describe('Genome', () => {
+  it('defines 20 unique GENE_SPECS and valid heuristic and greedy seeds', () => {
     expect(GENE_SPECS).toHaveLength(20);
     expect(new Set(GENE_SPECS.map((s) => s.key)).size).toBe(20);
     for (const spec of GENE_SPECS) expect(spec.min).toBeLessThan(spec.max);
@@ -31,29 +32,23 @@ describe('src/evolution', () => {
     expect(heuristic.weights.immediateBloomWeight).toBeGreaterThan(0);
     expect(heuristic.weights.deadPocket2Penalty).toBeLessThan(0);
     expect(greedy.weights.immediateBloomWeight).toBeGreaterThan(0);
+  });
 
-    // Clamping out-of-range values
-    const clamped = new Genome(
-      'clamped',
-      { ...heuristic.weights, immediateBloomWeight: 9999, deadPocket4Penalty: -9999 },
-      2,
-    );
+  it('clamps out-of-range weights and rejects invalid ids, generations, or non-finite weights', () => {
+    const base = Genome.heuristicSeed('base').weights;
+    const clamped = new Genome('clamped', { ...base, immediateBloomWeight: 9999, deadPocket4Penalty: -9999 }, 2);
     expect(clamped.generation).toBe(2);
     expect(clamped.weights.immediateBloomWeight).toBe(200);
     expect(clamped.weights.deadPocket4Penalty).toBe(-180);
 
-    // Validation rejections
-    expect(() => new Genome('', heuristic.weights)).toThrow();
-    expect(() => new Genome('bad-gen', heuristic.weights, -1)).toThrow();
-    expect(() => new Genome('bad-gen2', heuristic.weights, 1.5)).toThrow();
-    expect(
-      () => new Genome('nan-w', { ...heuristic.weights, immediateBloomWeight: Number.NaN }),
-    ).toThrow();
-    expect(
-      () => new Genome('inf-w', { ...heuristic.weights, multiBloomBonus: Number.POSITIVE_INFINITY }),
-    ).toThrow();
+    expect(() => new Genome('', base)).toThrow();
+    expect(() => new Genome('bad-gen', base, -1)).toThrow();
+    expect(() => new Genome('bad-gen2', base, 1.5)).toThrow();
+    expect(() => new Genome('nan-w', { ...base, immediateBloomWeight: Number.NaN })).toThrow();
+    expect(() => new Genome('inf-w', { ...base, multiBloomBonus: Number.POSITIVE_INFINITY })).toThrow();
+  });
 
-    // Deterministic random generation within bounds
+  it('generates deterministic random genomes within gene bounds', () => {
     const r1 = Genome.random('r', new SeededRandomSource(42), 1);
     const r2 = Genome.random('r', new SeededRandomSource(42), 1);
     expect(r1.weights).toEqual(r2.weights);
@@ -61,22 +56,31 @@ describe('src/evolution', () => {
       expect(r1.weights[spec.key]).toBeGreaterThanOrEqual(spec.min);
       expect(r1.weights[spec.key]).toBeLessThanOrEqual(spec.max);
     }
-
-    // JSON round-trip & invalid JSON rejection
-    const json = JSON.stringify(r1.toJSON());
-    const parsed = Genome.fromJSON(json);
-    expect(parsed.id).toBe(r1.id);
-    expect(parsed.generation).toBe(1);
-    expect(parsed.weights).toEqual(r1.weights);
-
-    expect(() => Genome.fromJSON('{bad')).toThrow();
-    expect(() => Genome.fromJSON('[]')).toThrow();
-    expect(() => Genome.fromJSON(JSON.stringify({ id: 'x', generation: 0, weights: {} }))).toThrow();
-    const badWeights: Record<string, unknown> = { ...(r1.weights as GeneWeights), immediateBloomWeight: 'nope' };
-    expect(() => Genome.fromJSON(JSON.stringify({ id: 'x', generation: 0, weights: badWeights }))).toThrow();
   });
 
-  it('EVO-02: EvolvedBot plays full games via GameRunner, outperforms RandomBot, and respects bloom scarcity weights', () => {
+  it('round-trips via toJSON, fromJSON, and fromSerialized and rejects malformed inputs', () => {
+    const original = Genome.random('r', new SeededRandomSource(42), 1);
+    const serialized = original.toJSON();
+    const fromObj = Genome.fromSerialized(serialized);
+    expect(fromObj).toBeInstanceOf(Genome);
+    expect([fromObj.id, fromObj.generation, fromObj.weights]).toEqual([original.id, 1, original.weights]);
+
+    const parsed = Genome.fromJSON(JSON.stringify(serialized));
+    expect([parsed.id, parsed.generation, parsed.weights]).toEqual([original.id, 1, original.weights]);
+
+    expect(() => Genome.fromSerialized(null)).toThrow();
+    expect(() => Genome.fromSerialized('nope')).toThrow();
+    expect(() => Genome.fromSerialized([])).toThrow();
+    expect(() => Genome.fromSerialized({ id: 'x', generation: 0 })).toThrow();
+    expect(() => Genome.fromJSON('{bad')).toThrow();
+    expect(() => Genome.fromJSON(JSON.stringify({ id: 'x', generation: 0, weights: {} }))).toThrow();
+    const badWeights: Record<string, unknown> = { ...(original.weights as GeneWeights), immediateBloomWeight: 'nope' };
+    expect(() => Genome.fromJSON(JSON.stringify({ id: 'x', generation: 0, weights: badWeights }))).toThrow();
+  });
+});
+
+describe('EvolvedBot', () => {
+  it('exposes metadata, registers in BotRegistry, and outperforms RandomBot across 20 games', () => {
     const hGenome = Genome.heuristicSeed('h0');
     const hBot = new EvolvedBot(hGenome);
     expect(hBot.id).toBe('evolved-h0');
@@ -108,8 +112,10 @@ describe('src/evolution', () => {
     }
     expect(hScore / 20).toBeGreaterThan(10);
     expect(hScore / 20).toBeGreaterThan(rScore / 20);
+  });
 
-    // bloomScarcityPriority positive prefers scarcer unseen color; negative prefers more common
+  it('respects positive and negative bloomScarcityPriority in chooseBlooms', () => {
+    const base = Genome.heuristicSeed('h0').weights;
     const game = Game.create(new SeededRandomSource(1));
     const unseenCounts = new Map<FlowerColor, number>(FLOWER_COLORS.map((c) => [c, 0]));
     for (const t of game.unseenTiles) for (const c of t.baseEdges) unseenCounts.set(c, (unseenCounts.get(c) ?? 0) + 1);
@@ -119,14 +125,16 @@ describe('src/evolution', () => {
     expect(unseenCounts.get(scarce)!).toBeLessThan(unseenCounts.get(common)!);
 
     const pending = [{ corner: new CornerCoord(0, 0), eligibleColors: [common, scarce] as readonly FlowerColor[] }];
-    const posBot = new EvolvedBot(new Genome('pos', { ...hGenome.weights, bloomScarcityPriority: 100, bloomFrontierScarcityPriority: 0 }));
-    const negBot = new EvolvedBot(new Genome('neg', { ...hGenome.weights, bloomScarcityPriority: -50, bloomFrontierScarcityPriority: 0 }));
+    const posBot = new EvolvedBot(new Genome('pos', { ...base, bloomScarcityPriority: 100, bloomFrontierScarcityPriority: 0 }));
+    const negBot = new EvolvedBot(new Genome('neg', { ...base, bloomScarcityPriority: -50, bloomFrontierScarcityPriority: 0 }));
     const move = game.validPlacements[0]!;
     expect(posBot.chooseBlooms(game.activeView!, move, pending, new SeededRandomSource(1))[0]!.color).toBe(scarce);
     expect(negBot.chooseBlooms(game.activeView!, move, pending, new SeededRandomSource(1))[0]!.color).toBe(common);
   });
+});
 
-  it('EVO-03: computeFitness uses 4*mean + median + 0.5*p95 and evaluateGenome is deterministic per seed', () => {
+describe('Fitness', () => {
+  it('computes 4*mean + median + 0.5*p95 with 0 on empty stats', () => {
     expect(computeFitness(new SimulationStats())).toBe(0);
     const stats = new SimulationStats([
       new GameResult({ placedFlowers: 4, remainingDrawCount: 0, placedTilesCount: 26, discardedTilesCount: 2, turnsPlayed: 27 }),
@@ -134,7 +142,9 @@ describe('src/evolution', () => {
       new GameResult({ placedFlowers: 8, remainingDrawCount: 8, placedTilesCount: 20, discardedTilesCount: 0, turnsPlayed: 19 }),
     ]);
     expect(computeFitness(stats)).toBeCloseTo(4 * stats.meanScore + stats.medianScore + 0.5 * stats.p95Score);
+  });
 
+  it('evaluates deterministically per seed, validates gamesPerGenome, and supports custom FitnessFunction', () => {
     const g = Genome.heuristicSeed('eval');
     expect(() => evaluateGenome(g, 0, 1)).toThrow();
     expect(() => evaluateGenome(g, 1.5, 1)).toThrow();
@@ -146,9 +156,16 @@ describe('src/evolution', () => {
     expect(e1.gamesPlayed).toBe(10);
     expect(e1.fitness).toBeCloseTo(4 * e1.meanScore + e1.medianScore + 0.5 * e1.p95Score);
     expect(e1.meanScore).not.toBe(eOther.meanScore);
-  });
 
-  it('EVO-04: describeGenome translates contrasting genomes into distinct English summaries and ranked topDrivers', () => {
+    const winRateOnly: FitnessFunction = (stats) => stats.winRate * 100;
+    const customEval = evaluateGenome(g, 10, 101, undefined, winRateOnly);
+    expect(customEval.fitness).toBeCloseTo(e1.winRate * 100);
+    expect(customEval.meanScore).toBe(e1.meanScore);
+  });
+});
+
+describe('StrategyDescriber', () => {
+  it('translates contrasting genomes into distinct English summaries and ranked topDrivers', () => {
     const h = Genome.heuristicSeed('h');
     const summaryH = describeGenome(h);
     expect(summaryH.headline.length).toBeGreaterThan(0);
@@ -176,8 +193,10 @@ describe('src/evolution', () => {
     expect(summaryC.headline).not.toBe(summaryH.headline);
     expect(summaryC.bullets).not.toEqual(summaryH.bullets);
   });
+});
 
-  it('EVO-05: GeneticAlgorithm validates config and builds warm-start or random initial populations', () => {
+describe('GeneticAlgorithm', () => {
+  it('validates config and builds warm-start or cold-start initial populations', () => {
     expect(DEFAULT_GA_CONFIG.populationSize).toBe(24);
     expect(DEFAULT_GA_CONFIG.gamesPerGenome).toBe(5000);
 
@@ -203,7 +222,7 @@ describe('src/evolution', () => {
     expect(() => new GeneticAlgorithm({ mutationSigma: 0 })).toThrow();
   });
 
-  it('EVO-06: GeneticAlgorithm.evolveGeneration preserves elites, clamps genes, summarizes fitness, and is deterministic', () => {
+  it('preserves elites, clamps genes, summarizes fitness, and evolves deterministically', () => {
     const ga = new GeneticAlgorithm({ populationSize: 6, gamesPerGenome: 5, eliteCount: 2, immigrantCount: 1 });
     expect(() => ga.evolveGeneration([], new SeededRandomSource(1))).toThrow();
 
@@ -242,12 +261,13 @@ describe('src/evolution', () => {
       }
     }
 
-    // Exercise crossoverRate = 0 (clone + mutate path)
     const gaNoCross = new GeneticAlgorithm({ populationSize: 6, gamesPerGenome: 5, crossoverRate: 0, mutationRate: 1 });
     expect(gaNoCross.evolveGeneration(evals, new SeededRandomSource(77)).nextPopulation).toHaveLength(6);
   });
+});
 
-  it('EVO-07: InMemoryEvolutionStore and LocalStorageEvolutionStore persist, rehydrate Genomes, recover from bad JSON, and clear', () => {
+describe('EvolutionStore', () => {
+  const makeFixtures = (): { g: Genome; checkpoint: EvolutionCheckpoint; champion: SavedChampion } => {
     const g = Genome.heuristicSeed('champ-1');
     const evaluation: GenomeEvaluation = {
       genome: g, generation: 2, gamesPlayed: 50, fitness: 75, winRate: 0.9,
@@ -261,7 +281,11 @@ describe('src/evolution', () => {
       bestEver: evaluation,
     };
     const champion: SavedChampion = { id: 'c1', name: 'Gen2 Champ', savedAtIso: '2026-01-01T00:00:00.000Z', evaluation };
+    return { g, checkpoint, champion };
+  };
 
+  it('InMemoryEvolutionStore saves, returns defensive copies, and clears checkpoints and champions', () => {
+    const { checkpoint, champion } = makeFixtures();
     const mem = new InMemoryEvolutionStore();
     expect(mem.loadCheckpoint()).toBeNull();
     expect(mem.loadChampions()).toEqual([]);
@@ -276,12 +300,15 @@ describe('src/evolution', () => {
     mem.clearChampions();
     expect(mem.loadCheckpoint()).toBeNull();
     expect(mem.loadChampions()).toEqual([]);
+  });
 
+  it('LocalStorageEvolutionStore persists, rehydrates Genomes, recovers from bad JSON, and clears', () => {
+    const { g, checkpoint, champion } = makeFixtures();
     const backing = new Map<string, string>();
-    const fakeStorage = {
-      getItem: (k: string): string | null => backing.get(k) ?? null,
-      setItem: (k: string, v: string): void => { backing.set(k, v); },
-      removeItem: (k: string): void => { backing.delete(k); },
+    const fakeStorage: StorageLike = {
+      getItem: (k) => backing.get(k) ?? null,
+      setItem: (k, v) => { backing.set(k, v); },
+      removeItem: (k) => { backing.delete(k); },
     };
     const ls = new LocalStorageEvolutionStore('gr.evo.test', fakeStorage);
     expect(ls.loadCheckpoint()).toBeNull();
