@@ -73,8 +73,8 @@ store.saveChampion({
   - Supports warm-starting generation 1 with `Genome.heuristicSeed()` and `Genome.greedySeed()`.
   - Preserves top `eliteCount` genomes verbatim, injects `immigrantCount` fresh random genomes each generation, and breeds remaining children via tournament selection, BLX-α (`alpha = 0.25`) blend crossover, and Box-Muller Gaussian mutation with generation-decayed step size `sigma * (max - min) / (1 + 0.05 * (gen - 1))`.
   - All offspring pass through `new Genome(...)`, guaranteeing strict `[min, max]` clamping.
-- **Generation-Seeded Fairness (`Fitness.ts`)**: `evaluateGenome` delegates to `SimulationSession` with a shared `generationSeed`, so every genome in a generation plays the exact same deck sequence for low-variance comparison.
-- **Store Rehydration (`EvolutionStore.ts`)**: Shared `reviveGenome` / `reviveCheckpoint` / `reviveChampion` helpers ensure both `InMemoryEvolutionStore` (defensive copies) and `LocalStorageEvolutionStore` (JSON rehydration with safe fallback on malformed data) return true `Genome` instances.
+- **Generation-Seeded Fairness & Pluggable Fitness (`Fitness.ts`)**: `evaluateGenome` delegates to `SimulationSession` with a shared `generationSeed` and accepts an optional `FitnessFunction` (defaulting to `computeFitness`), plus exports `SerializedGenomeEvaluation` for worker/storage transport.
+- **Store Rehydration & Interface Segregation (`EvolutionStore.ts`)**: `EvolutionStore` composes narrow `CheckpointStore` and `ChampionStore` interfaces. `Genome.fromSerialized(raw)` validates and revives unknown JSON/worker payloads, and `LocalStorageEvolutionStore` delegates persistence to `JsonKeyStore` from `../simulation`.
 
 ### Module DAG Constraint
 

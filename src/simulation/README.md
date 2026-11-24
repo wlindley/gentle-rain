@@ -46,7 +46,12 @@ console.log(session.stats.meanScore, session.stats.p95Score, session.stats.p99Sc
 import { BotRegistry } from '../bots';
 import { TournamentRunner } from '../simulation';
 
-const tournament = new TournamentRunner(BotRegistry.createDefault().bots, 50, 4, 2026);
+const tournament = new TournamentRunner({
+  bots: BotRegistry.createDefault().bots,
+  targetGames: 50,
+  parallelSlots: 4,
+  baseSeed: 2026,
+});
 while (!tournament.isComplete) {
   tournament.stepGamesAll(10);
 }
@@ -85,9 +90,10 @@ const history = store.loadAll();
 - **Slot Recycling & Frame-Budget Time Slicing**:
   - `SimulationSession` maintains `min(parallelSlots, targetGames)` active `GameRunner` slots. When a slot finishes, its result is recorded into `SimulationStats`, `bestSnapshot` / `worstSnapshot` are updated, and the slot is recycled for `nextGameIndex++` until `targetGames` have been scheduled.
   - `stepTurns(turnsPerSlot)` enables smooth animated UI playback; `stepGames(maxGames)` cycles round-robin across active slots for high-speed Turbo runs.
-- **Storage Serialization & Recovery**:
+- **Storage Serialization & Recovery (`JsonKeyStore<T>`, `StorageLike`)**:
+  - `JsonKeyStore<T>` encapsulates `JSON.parse`/`JSON.stringify` and safe error recovery over any `StorageLike` backend (defaulting to `globalThis.localStorage`), reused by both `LocalStorageScoreStore` and `src/evolution`'s `LocalStorageEvolutionStore`.
   - `InMemoryScoreStore` defensively copies records and `scoreHistogram` on both `save()` and `loadAll()`.
-  - `LocalStorageScoreStore` injects `Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>` (defaulting to `globalThis.localStorage`) and gracefully returns `[]` on missing keys, malformed JSON, or non-array payloads.
+  - `GameRunner.result` exposes `game.result` directly, and `SimulationStats` lazily caches sorted scores (invalidated on `record()`).
 
 ### Module DAG Constraint
 

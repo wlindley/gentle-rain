@@ -6,11 +6,11 @@
 
 ### Core Concepts
 
-- **`PondTile` & Edge Convention**: Each of the 28 unique pond tiles has 4 distinct `FlowerColor` edges ordered `[West, North, East, South]` (`Direction.West = 0`, `North = 1`, `East = 2`, `South = 3`). `Rotation` (`0 | 1 | 2 | 3`) rotates edges clockwise in 90° steps: `edgeAt(dir, rot) = baseEdges[(dir - rot + 4) % 4]`.
+- **`PondTile` & Edge Convention**: Each of the 28 unique pond tiles has 4 distinct `FlowerColor` edges ordered `[West, North, East, South]` (`ALL_DIRECTIONS`, `Direction.West = 0`, `North = 1`, `East = 2`, `South = 3`). `Rotation` (`ALL_ROTATIONS`, `0 | 1 | 2 | 3`) rotates edges clockwise in 90° steps: `edgeAt(dir, rot) = baseEdges[(dir - rot + 4) % 4]`.
 - **`TileCatalog`**: Loads and validates the 28 rotationally unique tiles from `rules/pond-tiles.json` (14 edges per color). Cached via `TileCatalog.defaultCatalog()`.
-- **`Board` & `ReadonlyBoardView`**: Manages placed tiles, orthogonal edge matching, 2×2 corner completion, flower blooms (`CornerCoord(cx, cy)` sits at the intersection of `(cx, cy)`, `(cx+1, cy)`, `(cx, cy+1)`, `(cx+1, cy+1)`), incremental bounding box `bounds`, and zero-mutation `previewPlacement(tile, placement)`.
-- **`Game` & `GameView`**: Orchestrates deck shuffling, initial `(0, 0)` placement, turn progression, mandatory maximal bloom resolution, discards when no valid placement exists, win/loss detection, and scoring (`score = placedFlowers + remainingDrawCount`, `isWin = placedFlowers === 8`).
-- **`GameResult` & `GameSnapshot`**: `game.result` returns a `GameResult` once `game.isComplete` is true (or `null` mid-game). `game.toSnapshot()` returns an immutable UI-friendly snapshot of the current state.
+- **`Board` & `ReadonlyBoardView`**: Manages placed tiles, orthogonal edge matching, `NeighborCount` (`1 | 2 | 3 | 4`) frontier constraints, 2×2 corner completion, flower blooms (`CornerCoord(cx, cy)` sits at the intersection of `(cx, cy)`, `(cx+1, cy)`, `(cx, cy+1)`, `(cx+1, cy+1)`), incremental bounding box `bounds`, and zero-mutation `previewPlacement(tile, placement)`.
+- **`Game`, `GameView` & `ActiveGameView`**: Orchestrates deck shuffling, initial `(0, 0)` placement, turn progression (`eligibleBloomsFor`, `applyMove` -> `PlacedTurnOutcome`, `discardCurrentTile` -> `DiscardedTurnOutcome`), win/loss detection, and scoring (`score = isWin ? placedFlowers + remainingDrawCount : placedFlowers`). `game.activeView` returns a narrowed `ActiveGameView` (`currentTile: PondTile`, `isComplete: false`) while active, or `null` once complete.
+- **`GameResult` & `GameSnapshot`**: `game.result` returns a `GameResult` once `game.isComplete` is true (or `null` mid-game). `game.toSnapshot()` returns a discriminated union `ActiveGameSnapshot | CompletedGameSnapshot`.
 
 ### Quick-Start Example
 

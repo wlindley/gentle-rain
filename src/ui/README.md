@@ -36,7 +36,10 @@ npm run preview  # Preview the production bundle locally
 | `StatsPanel.tsx` | Live KPI cards, Score Distribution & Blooms Placed histograms, and Best/Worst inspect buttons. |
 | `LeaderboardPanel.tsx` | Head-to-head tournament comparison table and persistent `localStorage` saved runs table. |
 | `BoardInspectorDialog.tsx` | Native `<dialog>` modal (`showModal()`/`close()`) rendering a detailed zoomed Canvas view. |
-| `App.tsx` | Thin orchestrator driving `SimulationSession` / `TournamentRunner` inside `requestAnimationFrame` budgets. |
+| `useSimulationController.ts` | Custom React hook owning `RunMode` (`'idle' \| 'simulating' \| 'tournament'`), RAF loop, `SimulationSession`/`TournamentRunner`, and score store. |
+| `useEvolutionController.ts` | Custom React hook owning GA `EvolutionWorkerPool`, checkpoint persistence, progress/throughput state, and start/pause/reset controls. |
+| `EvolutionPanel.tsx` / `ChampionCard.tsx` / `FitnessChart.tsx` | Declarative GA dashboard views consuming `useEvolutionController` and a discriminated `InspectedState` union for champion/imported inspection. |
+| `App.tsx` | Thin top-level layout & tab shell consuming `useSimulationController`. |
 
 ### Guardrails & DAG
 - Imports only through public `index.ts` entrypoints (`../game`, `../bots`, `../simulation`).

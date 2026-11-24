@@ -41,8 +41,9 @@ console.log(registry.bots.map((b) => b.id));
 ### Internal Architecture
 
 - **`BloomAssignmentSolver`** (`src/bots/BloomAssignmentSolver.ts`): Because a single tile placement completes at most 4 corners (each with at most 4 seam colors), exact backtracking DFS over `pendingCorners` (including the skip branch per corner) guarantees the exact maximum-cardinality distinct-color bloom assignment in microseconds, breaking ties by maximizing the sum of `colorPriority(color)`.
-- **Zero-Clone 1-Ply Heuristic Evaluation (`GreedyBloomBot`, `HeuristicBot`)**: Both bots evaluate every candidate in `view.validPlacements` via `view.board.previewPlacement(tile, placement)` without cloning `Board`. `HeuristicBot` only reads fair public game state (`view.unseenTiles` — never the hidden draw order) to compute color scarcity and count how many remaining unseen tiles can legally fill each affected multi-edge frontier pocket.
-- **Open/Closed Extensibility (`BotRegistry`)**: Consumers depend only on the `Bot` interface and `BotRegistry`, so new strategies can be added without modifying simulation or UI code.
+- **Shared Board Analysis Helpers (`BoardAnalysis.ts`)**: `countUnseenColors`, `countFrontierColors`, `tileFitsConstraint`, `countMatchingUnseen`, and `selectBestPlacement` (argmax with uniform tie-breaking) are shared across `GreedyBloomBot`, `HeuristicBot`, and `src/evolution`'s `EvolvedBot`.
+- **Zero-Clone 1-Ply Heuristic Evaluation (`GreedyBloomBot`, `HeuristicBot`)**: Bots receive a narrowed `ActiveGameView` (guaranteeing non-null `currentTile`) and evaluate candidates via `view.board.previewPlacement` and `view.eligibleBloomsFor` without cloning `Board`.
+- **Open/Closed Extensibility (`BotRegistry`)**: Provides `bots`, `has(id)`, `find(id)`, `require(id)`, and `register(bot)` so new strategies can be added without modifying simulation or UI code.
 
 ### Module DAG Constraint
 

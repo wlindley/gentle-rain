@@ -7,13 +7,23 @@ export interface ChampionCardProps {
   readonly onSendToSimulator: (genome: Genome, evaluation: GenomeEvaluation | null) => void;
 }
 
+type InspectedState =
+  | { readonly kind: 'empty' }
+  | { readonly kind: 'champion'; readonly evaluation: GenomeEvaluation }
+  | { readonly kind: 'imported'; readonly genome: Genome };
+
 export function ChampionCard({ champion, onSendToSimulator }: ChampionCardProps) {
   const [copied, setCopied] = useState(false);
   const [importText, setImportText] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
   const [importedGenome, setImportedGenome] = useState<Genome | null>(null);
 
-  const activeGenome = importedGenome ?? champion?.genome ?? null;
+  const inspected: InspectedState = importedGenome
+    ? { kind: 'imported', genome: importedGenome }
+    : champion
+      ? { kind: 'champion', evaluation: champion }
+      : { kind: 'empty' };
+  const activeGenome = inspected.kind === 'imported' ? inspected.genome : inspected.kind === 'champion' ? inspected.evaluation.genome : null;
   const summary = activeGenome ? describeGenome(activeGenome) : null;
 
   const handleCopy = async () => {
@@ -29,8 +39,7 @@ export function ChampionCard({ champion, onSendToSimulator }: ChampionCardProps)
 
   const handleImport = () => {
     try {
-      const parsed = Genome.fromJSON(importText);
-      setImportedGenome(parsed);
+      setImportedGenome(Genome.fromJSON(importText));
       setImportError(null);
     } catch (err) {
       setImportError(err instanceof Error ? err.message : 'Invalid genome JSON');
@@ -41,34 +50,37 @@ export function ChampionCard({ champion, onSendToSimulator }: ChampionCardProps)
     <section className="panel" aria-label="Champion strategy inspector">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
         <h2 style={{ margin: 0 }}>
-          {importedGenome ? `Imported Genome (${importedGenome.id})` : 'Best Evolved Champion'}
+          {inspected.kind === 'imported' ? `Imported Genome (${inspected.genome.id})` : 'Best Evolved Champion'}
         </h2>
         <div className="btn-group" style={{ marginLeft: 0 }}>
-          {importedGenome && (
+          {inspected.kind === 'imported' && (
             <button type="button" onClick={() => setImportedGenome(null)}>Back to Champion</button>
           )}
-          <button type="button" disabled={!activeGenome} onClick={handleCopy}>
+          <button type="button" disabled={inspected.kind === 'empty'} onClick={handleCopy}>
             {copied ? 'Copied JSON!' : 'Copy Genome JSON'}
           </button>
           <button
             type="button"
             className="gold"
-            disabled={!activeGenome}
-            onClick={() => activeGenome && onSendToSimulator(activeGenome, importedGenome ? null : champion)}
+            disabled={inspected.kind === 'empty'}
+            onClick={() => {
+              if (inspected.kind === 'imported') onSendToSimulator(inspected.genome, null);
+              else if (inspected.kind === 'champion') onSendToSimulator(inspected.evaluation.genome, inspected.evaluation);
+            }}
           >
             Send to Simulator
           </button>
         </div>
       </div>
 
-      {champion && !importedGenome && (
+      {inspected.kind === 'champion' && (
         <div className="kpi-grid">
-          <div className="kpi"><div className="kpi-label">Fitness</div><div className="kpi-value">{champion.fitness.toFixed(2)}</div></div>
-          <div className="kpi"><div className="kpi-label">Win Rate</div><div className="kpi-value">{(champion.winRate * 100).toFixed(1)}%</div></div>
-          <div className="kpi"><div className="kpi-label">Mean</div><div className="kpi-value">{champion.meanScore.toFixed(2)}</div></div>
-          <div className="kpi"><div className="kpi-label">Median</div><div className="kpi-value">{champion.medianScore.toFixed(1)}</div></div>
-          <div className="kpi"><div className="kpi-label">p95 / p99</div><div className="kpi-value">{champion.p95Score} / {champion.p99Score}</div></div>
-          <div className="kpi"><div className="kpi-label">Max</div><div className="kpi-value">{champion.maxScore}</div></div>
+          <div className="kpi"><div className="kpi-label">Fitness</div><div className="kpi-value">{inspected.evaluation.fitness.toFixed(2)}</div></div>
+          <div className="kpi"><div className="kpi-label">Win Rate</div><div className="kpi-value">{(inspected.evaluation.winRate * 100).toFixed(1)}%</div></div>
+          <div className="kpi"><div className="kpi-label">Mean</div><div className="kpi-value">{inspected.evaluation.meanScore.toFixed(2)}</div></div>
+          <div className="kpi"><div className="kpi-label">Median</div><div className="kpi-value">{inspected.evaluation.medianScore.toFixed(1)}</div></div>
+          <div className="kpi"><div className="kpi-label">p95 / p99</div><div className="kpi-value">{inspected.evaluation.p95Score} / {inspected.evaluation.p99Score}</div></div>
+          <div className="kpi"><div className="kpi-label">Max</div><div className="kpi-value">{inspected.evaluation.maxScore}</div></div>
         </div>
       )}
 
