@@ -17,10 +17,14 @@ export class BotRegistry {
   }
 
   register(bot: Bot): void {
-    if (this.byId.has(bot.id)) {
+    if (this.has(bot.id)) {
       throw new Error(`Bot with id "${bot.id}" is already registered`);
     }
     this.byId.set(bot.id, bot);
+  }
+
+  has(id: string): boolean {
+    return this.byId.has(id);
   }
 
   find(id: string): Bot | undefined {
