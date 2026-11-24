@@ -4,15 +4,54 @@ import { GameResult } from '../game';
 import {
   GameRunner,
   InMemoryScoreStore,
+  JsonKeyStore,
   LocalStorageScoreStore,
   SimulationSession,
   SimulationStats,
   TournamentRunner,
 } from './index';
-import type { BotRunRecord } from './index';
+import type { BotRunRecord, StorageLike } from './index';
 
-describe('src/simulation', () => {
-  it('SIM-01: GameRunner steps turn-by-turn and matches runToCompletion for the same (bot, seed)', () => {
+const makeFakeStorage = (): { backing: Map<string, string>; storage: StorageLike } => {
+  const backing = new Map<string, string>();
+  const storage: StorageLike = {
+    getItem: (key) => backing.get(key) ?? null,
+    setItem: (key, value) => { backing.set(key, value); },
+    removeItem: (key) => { backing.delete(key); },
+  };
+  return { backing, storage };
+};
+
+const makeResult = (flowers: number, rem: number, discards = 0): GameResult =>
+  new GameResult({
+    placedFlowers: flowers,
+    remainingDrawCount: rem,
+    placedTilesCount: 28 - rem - discards,
+    discardedTilesCount: discards,
+    turnsPlayed: 27 - rem,
+  });
+
+const makeRecord = (id: string, meanScore: number): BotRunRecord => ({
+  id,
+  botId: 'heuristic',
+  botName: 'Heuristic Bot',
+  timestampIso: '2026-01-01T00:00:00.000Z',
+  baseSeed: 42,
+  totalGames: 100,
+  winCount: 80,
+  winRate: 0.8,
+  meanScore,
+  medianScore: 10,
+  p95Score: 15,
+  p99Score: 17,
+  minScore: 4,
+  maxScore: 18,
+  meanBlooms: 7.6,
+  scoreHistogram: { '10': 50, '15': 50 },
+});
+
+describe('GameRunner', () => {
+  it('steps turn-by-turn and matches runToCompletion for the same (bot, seed)', () => {
     const bot = new RandomBot();
     const stepped = new GameRunner(bot, 77);
     expect(stepped.bot).toBe(bot);
@@ -31,20 +70,21 @@ describe('src/simulation', () => {
 
     const direct = new GameRunner(bot, 77).runToCompletion();
     expect(stepped.game.result).toEqual(direct);
-
-    // Also verify a game that includes a discard steps cleanly to completion
-    const greedy = new GreedyBloomBot();
-    let sawDiscard = false;
-    for (let s = 1; s <= 30 && !sawDiscard; s += 1) {
-      const runner = new GameRunner(greedy, s);
-      while (!runner.isComplete) {
-        if (runner.step()?.kind === 'discarded') sawDiscard = true;
-      }
-    }
-    expect(sawDiscard).toBe(true);
   });
 
-  it('SIM-02: SimulationStats handles empty state and computes exact rates, medians, percentiles, stdDev, and histograms', () => {
+  it('steps through discarded turns cleanly on a deterministic seed', () => {
+    const runner = new GameRunner(new GreedyBloomBot(), 14);
+    let sawDiscard = false;
+    while (!runner.isComplete) {
+      if (runner.step()?.kind === 'discarded') sawDiscard = true;
+    }
+    expect(sawDiscard).toBe(true);
+    expect(runner.game.result?.discardedTilesCount).toBeGreaterThan(0);
+  });
+});
+
+describe('SimulationStats', () => {
+  it('returns zero defaults and empty histograms when empty', () => {
     const empty = new SimulationStats();
     expect(empty.totalGames).toBe(0);
     expect(empty.winCount).toBe(0);
@@ -60,69 +100,69 @@ describe('src/simulation', () => {
     expect(empty.meanDiscards).toBe(0);
     expect(empty.scoreHistogram.size).toBe(0);
     expect(empty.bloomHistogram).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0]);
+  });
 
-    const mk = (flowers: number, rem: number, discards = 0) =>
-      new GameResult({
-        placedFlowers: flowers,
-        remainingDrawCount: rem,
-        placedTilesCount: 28 - rem - discards,
-        discardedTilesCount: discards,
-        turnsPlayed: 27 - rem,
-      });
+  it('computes exact win rate, mean, odd/even medians, stdDev, and histograms', () => {
+    const stats = new SimulationStats([makeResult(4, 0, 2), makeResult(8, 2, 1), makeResult(8, 4, 0)]);
+    expect(stats.totalGames).toBe(3);
+    expect([stats.scores, stats.bloomCounts, stats.totalDiscards]).toEqual([[4, 10, 12], [4, 8, 8], 3]);
+    expect(stats.winCount).toBe(2);
+    expect(stats.winRate).toBeCloseTo(2 / 3);
+    expect(stats.meanScore).toBeCloseTo(26 / 3);
+    expect(stats.medianScore).toBe(10);
+    expect(stats.minScore).toBe(4);
+    expect(stats.maxScore).toBe(12);
+    expect(stats.meanBlooms).toBeCloseTo(20 / 3);
+    expect(stats.meanDiscards).toBeCloseTo(1);
+    expect(stats.scoreHistogram.get(10)).toBe(1);
+    expect(stats.bloomHistogram[4]).toBe(1);
+    expect(stats.bloomHistogram[8]).toBe(2);
 
-    // Odd count (3): scores [4, 10, 12] -> median 10, mean 26/3
-    const odd = new SimulationStats([mk(4, 0, 2), mk(8, 2, 1), mk(8, 4, 0)]);
-    expect(odd.totalGames).toBe(3);
-    expect([odd.scores, odd.bloomCounts, odd.totalDiscards]).toEqual([[4, 10, 12], [4, 8, 8], 3]);
-    expect(odd.winCount).toBe(2);
-    expect(odd.winRate).toBeCloseTo(2 / 3);
-    expect(odd.meanScore).toBeCloseTo(26 / 3);
-    expect(odd.medianScore).toBe(10);
-    expect(odd.minScore).toBe(4);
-    expect(odd.maxScore).toBe(12);
-    expect(odd.meanBlooms).toBeCloseTo(20 / 3);
-    expect(odd.meanDiscards).toBeCloseTo(1);
-    expect(odd.scoreHistogram.get(10)).toBe(1);
-    expect(odd.bloomHistogram[4]).toBe(1);
-    expect(odd.bloomHistogram[8]).toBe(2);
+    stats.record(makeResult(6, 0, 1));
+    expect(stats.medianScore).toBe(8);
+    expect(stats.stdDevScore).toBeCloseTo(Math.sqrt(10));
+  });
 
-    // Even count (4): scores [4, 6, 10, 12] -> median 8, stdDev sqrt(((16+4+4+16)/4)) = sqrt(10)
-    odd.record(mk(6, 0, 1));
-    expect(odd.medianScore).toBe(8);
-    expect(odd.stdDevScore).toBeCloseTo(Math.sqrt(10));
-
-    // Nearest-rank p95 / p99 on n = 100: 94x5, 4x12, 1x15, 1x18
+  it('computes nearest-rank p95 and p99 percentiles', () => {
     const dist = new SimulationStats();
-    for (let i = 0; i < 94; i += 1) dist.record(mk(5, 0));
-    for (let i = 0; i < 4; i += 1) dist.record(mk(8, 4));
-    dist.record(mk(8, 7));
-    dist.record(mk(8, 10));
+    for (let i = 0; i < 94; i += 1) dist.record(makeResult(5, 0));
+    for (let i = 0; i < 4; i += 1) dist.record(makeResult(8, 4));
+    dist.record(makeResult(8, 7));
+    dist.record(makeResult(8, 10));
     expect(dist.medianScore).toBe(5);
     expect(dist.p95Score).toBe(12);
     expect(dist.p99Score).toBe(15);
     expect(dist.maxScore).toBe(18);
   });
+});
 
-  const makeRecord = (id: string, meanScore: number): BotRunRecord => ({
-    id,
-    botId: 'heuristic',
-    botName: 'Heuristic Bot',
-    timestampIso: '2026-01-01T00:00:00.000Z',
-    baseSeed: 42,
-    totalGames: 100,
-    winCount: 80,
-    winRate: 0.8,
-    meanScore,
-    medianScore: 10,
-    p95Score: 15,
-    p99Score: 17,
-    minScore: 4,
-    maxScore: 18,
-    meanBlooms: 7.6,
-    scoreHistogram: { '10': 50, '15': 50 },
+describe('JsonKeyStore', () => {
+  it('reads, writes, clears, and returns null on missing or invalid JSON', () => {
+    const { backing, storage } = makeFakeStorage();
+    const store = new JsonKeyStore<{ v: number }>('gr.test.key', storage);
+    const revive = (raw: unknown): { v: number } | null =>
+      raw && typeof raw === 'object' && typeof (raw as { v?: unknown }).v === 'number'
+        ? { v: (raw as { v: number }).v }
+        : null;
+
+    expect(store.read(revive)).toBeNull();
+    store.write({ v: 7 });
+    expect(store.read(revive)).toEqual({ v: 7 });
+
+    backing.set('gr.test.key', '{broken-json');
+    expect(store.read(revive)).toBeNull();
+
+    backing.set('gr.test.key', JSON.stringify({ wrong: true }));
+    expect(store.read(revive)).toBeNull();
+
+    store.clear();
+    expect(backing.has('gr.test.key')).toBe(false);
+    expect(store.read(revive)).toBeNull();
   });
+});
 
-  it('SIM-03: InMemoryScoreStore saves in order, returns defensive copies, and clears', () => {
+describe('ScoreStore', () => {
+  it('InMemoryScoreStore saves in order, returns defensive copies, and clears', () => {
     const store = new InMemoryScoreStore();
     expect(store.loadAll()).toEqual([]);
 
@@ -143,15 +183,9 @@ describe('src/simulation', () => {
     expect(store.loadAll()).toEqual([]);
   });
 
-  it('SIM-04: LocalStorageScoreStore persists JSON via injected storage, recovers from malformed JSON, and clears', () => {
-    const backing = new Map<string, string>();
-    const fakeStorage = {
-      getItem: (key: string): string | null => backing.get(key) ?? null,
-      setItem: (key: string, value: string): void => { backing.set(key, value); },
-      removeItem: (key: string): void => { backing.delete(key); },
-    };
-
-    const store = new LocalStorageScoreStore('gr.test.runs', fakeStorage);
+  it('LocalStorageScoreStore persists JSON, recovers from malformed JSON, and clears', () => {
+    const { backing, storage } = makeFakeStorage();
+    const store = new LocalStorageScoreStore('gr.test.runs', storage);
     expect(store.loadAll()).toEqual([]);
 
     const r1 = makeRecord('r1', 9.8);
@@ -172,8 +206,10 @@ describe('src/simulation', () => {
     expect(backing.has('gr.test.runs')).toBe(false);
     expect(store.loadAll()).toEqual([]);
   });
+});
 
-  it('SIM-05: SimulationSession recycles slots, tracks best/worst snapshots, and yields identical stats via stepTurns vs stepGames', () => {
+describe('SimulationSession', () => {
+  it('validates config and initializes min(parallelSlots, targetGames) slots', () => {
     const bot = new GreedyBloomBot();
     const small = new SimulationSession({ bot, targetGames: 2, parallelSlots: 5, baseSeed: 100 });
     expect(small.slotViews).toHaveLength(2);
@@ -186,7 +222,10 @@ describe('src/simulation', () => {
     expect(() => new SimulationSession({ bot, targetGames: 0, parallelSlots: 2, baseSeed: 1 })).toThrow();
     expect(() => new SimulationSession({ bot, targetGames: 2, parallelSlots: 0, baseSeed: 1 })).toThrow();
     expect(() => new SimulationSession({ bot, targetGames: 1.5, parallelSlots: 2, baseSeed: 1 })).toThrow();
+  });
 
+  it('recycles slots, tracks best/worst snapshots, and matches stats across stepTurns vs stepGames', () => {
+    const bot = new GreedyBloomBot();
     const byTurns = new SimulationSession({ bot, targetGames: 10, parallelSlots: 3, baseSeed: 500 });
     expect(byTurns.slotViews).toHaveLength(3);
     while (!byTurns.isComplete) byTurns.stepTurns(1);
@@ -213,7 +252,7 @@ describe('src/simulation', () => {
     );
   });
 
-  it('SIM-06: SimulationSession.toRunRecord exports accurate BotRunRecord that round-trips through ScoreStore', () => {
+  it('exports BotRunRecord via toRunRecord and round-trips through ScoreStore', () => {
     const session = new SimulationSession({ bot: new RandomBot(), targetGames: 6, parallelSlots: 2, baseSeed: 321 });
     session.stepGames(6);
 
@@ -234,17 +273,17 @@ describe('src/simulation', () => {
     store.save(explicit);
     expect(store.loadAll()).toEqual([explicit]);
   });
+});
 
-  it('SIM-07: TournamentRunner runs all bots on identical seeds and ranks summaries by meanScore descending', () => {
+describe('TournamentRunner', () => {
+  it('rejects empty bot lists, runs all bots on identical seeds, and ranks by meanScore descending', () => {
     const bots = BotRegistry.createDefault().bots;
     const tournament = new TournamentRunner({ bots, targetGames: 20, parallelSlots: 4, baseSeed: 2026 });
     expect(() => new TournamentRunner({ bots: [], targetGames: 10, parallelSlots: 2, baseSeed: 1 })).toThrow();
     expect(tournament.sessions).toHaveLength(3);
     expect(tournament.isComplete).toBe(false);
 
-    while (!tournament.isComplete) {
-      tournament.stepGamesAll(5);
-    }
+    while (!tournament.isComplete) tournament.stepGamesAll(5);
     expect(tournament.isComplete).toBe(true);
     for (const session of tournament.sessions) {
       expect(session.completedGames).toBe(20);
