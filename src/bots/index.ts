@@ -1,4 +1,6 @@
 export type { Bot } from './Bot';
+export { adviseMove } from './BotAdvisor';
+export type { BotMoveAdvice } from './BotAdvisor';
 export { BloomAssignmentSolver } from './BloomAssignmentSolver';
 export {
   countFrontierColors,

@@ -1,3 +1,4 @@
+import { adviseMove } from '../bots';
 import type { Bot } from '../bots';
 import { Game, GameResult, TileCatalog } from '../game';
 import type { GameSnapshot, TurnOutcome } from '../game';
@@ -23,11 +24,9 @@ export class GameRunner {
   step(): TurnOutcome | null {
     const view = this.game.activeView;
     if (!view) return null;
-    if (view.validPlacements.length === 0) return this.game.discardCurrentTile();
-    const placement = this.bot.choosePlacement(view, this.botRng);
-    const pending = view.eligibleBloomsFor(placement);
-    const blooms = this.bot.chooseBlooms(view, placement, pending, this.botRng);
-    return this.game.applyMove(placement, blooms);
+    const advice = adviseMove(this.bot, view, this.botRng);
+    if (advice.kind === 'discard') return this.game.discardCurrentTile();
+    return this.game.applyMove(advice.placement, advice.blooms);
   }
 
   runToCompletion(): GameResult {

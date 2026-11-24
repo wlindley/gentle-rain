@@ -3,6 +3,7 @@ import { CornerCoord, Game, GridCoord, PondTile, TileCatalog } from '../game';
 import type { FlowerColor, FrontierConstraint, TilePlacement } from '../game';
 import { SeededRandomSource, StubRandomSource } from '../rng';
 import {
+  adviseMove,
   BloomAssignmentSolver,
   BotRegistry,
   countFrontierColors,
@@ -248,5 +249,38 @@ describe('BotRegistry', () => {
     expect(registry.bots).toHaveLength(4);
     expect(() => registry.register(custom)).toThrow();
     expect(() => new BotRegistry([custom, custom])).toThrow();
+  });
+});
+
+describe('adviseMove', () => {
+  it('returns a place advice with empty blooms when no corners complete', () => {
+    const game = makeOrderedGame([0, 1]);
+    const advice = adviseMove(new GreedyBloomBot(), game.activeView!, new SeededRandomSource(1));
+    expect(advice.kind).toBe('place');
+    if (advice.kind === 'place') {
+      expect(game.board.isValidPlacement(game.currentTile!, advice.placement)).toBe(true);
+      expect(advice.blooms).toEqual([]);
+    }
+  });
+
+  it('returns a place advice with valid maximal blooms when a corner completes', () => {
+    const game = makeOrderedGame([0, 1, 2, 25]);
+    game.applyMove({ coord: new GridCoord(1, 0), rotation: 3 });
+    game.applyMove({ coord: new GridCoord(0, 1), rotation: 3 });
+    const advice = adviseMove(new GreedyBloomBot(), game.activeView!, new SeededRandomSource(1));
+    expect(advice.kind).toBe('place');
+    if (advice.kind === 'place') {
+      expect(advice.placement).toEqual({ coord: new GridCoord(1, 1), rotation: 0 });
+      expect(advice.blooms).toHaveLength(1);
+      const eligible = game.eligibleBloomsFor(advice.placement)[0]!;
+      expect(advice.blooms[0]!.corner.equals(eligible.corner)).toBe(true);
+      expect(eligible.eligibleColors).toContain(advice.blooms[0]!.color);
+    }
+  });
+
+  it('returns a discard advice when no valid placements exist', () => {
+    const game = makeOrderedGame([0, 27]);
+    expect(game.validPlacements).toEqual([]);
+    expect(adviseMove(new HeuristicBot(), game.activeView!, new SeededRandomSource(1))).toEqual({ kind: 'discard' });
   });
 });
