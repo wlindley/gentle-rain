@@ -20,11 +20,12 @@ export class GameRunner {
   get isComplete(): boolean { return this.game.isComplete; }
 
   step(): TurnOutcome | null {
-    if (this.game.isComplete) return null;
-    if (this.game.validPlacements.length === 0) return this.game.discardCurrentTile();
-    const placement = this.bot.choosePlacement(this.game, this.botRng);
-    const pending = this.game.eligibleBloomsFor(placement);
-    const blooms = this.bot.chooseBlooms(this.game, placement, pending, this.botRng);
+    const view = this.game.activeView;
+    if (!view) return null;
+    if (view.validPlacements.length === 0) return this.game.discardCurrentTile();
+    const placement = this.bot.choosePlacement(view, this.botRng);
+    const pending = view.eligibleBloomsFor(placement);
+    const blooms = this.bot.chooseBlooms(view, placement, pending, this.botRng);
     return this.game.applyMove(placement, blooms);
   }
 

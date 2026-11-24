@@ -1,7 +1,7 @@
 import { BloomAssignmentSolver } from '../bots';
 import type { Bot } from '../bots';
 import { Direction, FLOWER_COLORS } from '../game';
-import type { BloomPlacement, FlowerColor, FrontierConstraint, GameView, PendingCornerBloom, PondTile, Rotation, TilePlacement } from '../game';
+import type { ActiveGameView, BloomPlacement, FlowerColor, FrontierConstraint, PendingCornerBloom, PondTile, Rotation, TilePlacement } from '../game';
 import type { RandomSource } from '../rng';
 import { Genome } from './Genome';
 
@@ -57,8 +57,8 @@ export class EvolvedBot implements Bot {
     this.description = `Parameterized 20-gene evolved heuristic bot (gen ${genome.generation}).`;
   }
 
-  choosePlacement(view: GameView, rng: RandomSource): TilePlacement {
-    const tile = view.currentTile!;
+  choosePlacement(view: ActiveGameView, rng: RandomSource): TilePlacement {
+    const tile = view.currentTile;
     const w = this.genome.weights;
     const unseenCounts = countUnseenColors(view.unseenTiles);
     const bloomPriority = this.makeBloomPriority(unseenCounts, countFrontierColors(view.board.frontierConstraints));
@@ -107,7 +107,7 @@ export class EvolvedBot implements Bot {
   }
 
   chooseBlooms(
-    view: GameView,
+    view: ActiveGameView,
     _placement: TilePlacement,
     pendingCorners: readonly PendingCornerBloom[],
     _rng: RandomSource,

@@ -1,5 +1,5 @@
 import type { RandomSource } from '../rng';
-import type { BloomPlacement, GameView, PendingCornerBloom, TilePlacement } from '../game';
+import type { ActiveGameView, BloomPlacement, PendingCornerBloom, TilePlacement } from '../game';
 import { BloomAssignmentSolver } from './BloomAssignmentSolver';
 import type { Bot } from './Bot';
 
@@ -8,12 +8,12 @@ export class RandomBot implements Bot {
   readonly name = 'Random Bot';
   readonly description = 'Selects a uniformly random valid placement and maximal bloom assignment.';
 
-  choosePlacement(view: GameView, rng: RandomSource): TilePlacement {
+  choosePlacement(view: ActiveGameView, rng: RandomSource): TilePlacement {
     return view.validPlacements[rng.nextInt(view.validPlacements.length)]!;
   }
 
   chooseBlooms(
-    _view: GameView,
+    _view: ActiveGameView,
     _placement: TilePlacement,
     pendingCorners: readonly PendingCornerBloom[],
     rng: RandomSource,

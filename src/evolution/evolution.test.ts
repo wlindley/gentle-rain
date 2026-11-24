@@ -122,8 +122,8 @@ describe('src/evolution', () => {
     const posBot = new EvolvedBot(new Genome('pos', { ...hGenome.weights, bloomScarcityPriority: 100, bloomFrontierScarcityPriority: 0 }));
     const negBot = new EvolvedBot(new Genome('neg', { ...hGenome.weights, bloomScarcityPriority: -50, bloomFrontierScarcityPriority: 0 }));
     const move = game.validPlacements[0]!;
-    expect(posBot.chooseBlooms(game, move, pending, new SeededRandomSource(1))[0]!.color).toBe(scarce);
-    expect(negBot.chooseBlooms(game, move, pending, new SeededRandomSource(1))[0]!.color).toBe(common);
+    expect(posBot.chooseBlooms(game.activeView!, move, pending, new SeededRandomSource(1))[0]!.color).toBe(scarce);
+    expect(negBot.chooseBlooms(game.activeView!, move, pending, new SeededRandomSource(1))[0]!.color).toBe(common);
   });
 
   it('EVO-03: computeFitness uses 4*mean + median + 0.5*p95 and evaluateGenome is deterministic per seed', () => {

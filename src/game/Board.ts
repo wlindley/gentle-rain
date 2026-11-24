@@ -1,20 +1,19 @@
 import { CornerCoord, GridCoord } from './Coords';
 import { PondTile } from './PondTile';
-import { Direction } from './types';
+import { ALL_DIRECTIONS, ALL_ROTATIONS, Direction } from './types';
 import type {
   BloomPlacement,
   BoardBounds,
   CompletedCorner,
   FlowerColor,
   FrontierConstraint,
+  NeighborCount,
   PlacedTile,
   PlacementPreview,
   Rotation,
   TilePlacement,
 } from './types';
 
-const DIRECTIONS: readonly Direction[] = [Direction.West, Direction.North, Direction.East, Direction.South];
-const ROTATIONS: readonly Rotation[] = [0, 1, 2, 3];
 const CORNER_OFFSETS: readonly (readonly [number, number])[] = [[-1, -1], [0, -1], [-1, 0], [0, 0]];
 const packCoord = (x: number, y: number): number => (x + 32768) * 65536 + (y + 32768);
 type MutableEdges = [FlowerColor | null, FlowerColor | null, FlowerColor | null, FlowerColor | null];
@@ -50,7 +49,9 @@ export class Board implements ReadonlyBoardView {
   get bounds(): BoardBounds { return { minX: this.minX, maxX: this.maxX, minY: this.minY, maxY: this.maxY }; }
   get frontierConstraints(): readonly FrontierConstraint[] {
     return Array.from(this.frontier.values(), ({ coord, requiredEdges, neighborCount }) => ({
-      coord, requiredEdges: [...requiredEdges] as FrontierConstraint['requiredEdges'], neighborCount,
+      coord,
+      requiredEdges: [...requiredEdges] as FrontierConstraint['requiredEdges'],
+      neighborCount: neighborCount as NeighborCount,
     }));
   }
   placeInitialTile(tile: PondTile, rotation: Rotation = 0): void {
@@ -75,22 +76,26 @@ export class Board implements ReadonlyBoardView {
     if (!this.isValidPlacement(tile, placement)) throw new Error(`Invalid placement at ${placement.coord.key}`);
     const entry = this.frontier.get(packCoord(placement.coord.x, placement.coord.y))!;
     const affectedFrontierConstraints: FrontierConstraint[] = [];
-    for (const dir of DIRECTIONS) {
+    for (const dir of ALL_DIRECTIONS) {
       const neighbor = placement.coord.neighbor(dir);
       const nKey = packCoord(neighbor.x, neighbor.y);
       if (this.tiles.has(nKey)) continue;
       const existing = this.frontier.get(nKey);
       const requiredEdges: MutableEdges = existing ? [...existing.requiredEdges] : [null, null, null, null];
       requiredEdges[(dir + 2) & 3] = tile.edgeAt(dir, placement.rotation);
-      affectedFrontierConstraints.push({ coord: neighbor, requiredEdges, neighborCount: (existing?.neighborCount ?? 0) + 1 });
+      affectedFrontierConstraints.push({
+        coord: neighbor,
+        requiredEdges,
+        neighborCount: ((existing?.neighborCount ?? 0) + 1) as NeighborCount,
+      });
     }
     const completedCorners = this.completedCornersFor(placement.coord, { tile, coord: placement.coord, rotation: placement.rotation });
-    return { placement, completedCorners, affectedFrontierConstraints, neighborCount: entry.neighborCount };
+    return { placement, completedCorners, affectedFrontierConstraints, neighborCount: entry.neighborCount as NeighborCount };
   }
   validPlacementsFor(tile: PondTile): readonly TilePlacement[] {
     const out: TilePlacement[] = [];
     for (const entry of this.frontier.values()) {
-      for (const rotation of ROTATIONS) if (this.matches(tile, rotation, entry)) out.push({ coord: entry.coord, rotation });
+      for (const rotation of ALL_ROTATIONS) if (this.matches(tile, rotation, entry)) out.push({ coord: entry.coord, rotation });
     }
     return out;
   }
@@ -106,7 +111,7 @@ export class Board implements ReadonlyBoardView {
     this.maxX = Math.max(this.maxX, coord.x);
     this.minY = Math.min(this.minY, coord.y);
     this.maxY = Math.max(this.maxY, coord.y);
-    for (const dir of DIRECTIONS) {
+    for (const dir of ALL_DIRECTIONS) {
       const neighbor = coord.neighbor(dir);
       const nKey = packCoord(neighbor.x, neighbor.y);
       if (this.tiles.has(nKey)) continue;
@@ -143,7 +148,7 @@ export class Board implements ReadonlyBoardView {
     return override && override.coord.x === x && override.coord.y === y ? override : this.tiles.get(packCoord(x, y));
   }
   private matches(tile: PondTile, rotation: Rotation, entry: MutableFrontierEntry): boolean {
-    for (const dir of DIRECTIONS) {
+    for (const dir of ALL_DIRECTIONS) {
       const req = entry.requiredEdges[dir];
       if (req !== null && tile.edgeAt(dir, rotation) !== req) return false;
     }

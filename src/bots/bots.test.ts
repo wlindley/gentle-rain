@@ -73,8 +73,9 @@ describe('src/bots', () => {
     const botRng = rng.derive(1);
     while (!game.isComplete) {
       if (game.validPlacements.length === 0) { game.discardCurrentTile(); continue; }
-      const p = bot.choosePlacement(game, botRng);
-      const blooms = bot.chooseBlooms(game, p, game.eligibleBloomsFor(p), botRng);
+      const view = game.activeView!;
+      const p = bot.choosePlacement(view, botRng);
+      const blooms = bot.chooseBlooms(view, p, view.eligibleBloomsFor(p), botRng);
       game.applyMove(p, blooms);
     }
     return game;
@@ -86,14 +87,14 @@ describe('src/bots', () => {
     const game = makeOrderedGame([0, 1]);
     const moves = game.validPlacements;
     expect(moves.length).toBeGreaterThan(1);
-    expect(bot.choosePlacement(game, new StubRandomSource([0]))).toEqual(moves[0]);
-    expect(bot.choosePlacement(game, new StubRandomSource([0.999]))).toEqual(moves[moves.length - 1]);
+    expect(bot.choosePlacement(game.activeView!, new StubRandomSource([0]))).toEqual(moves[0]);
+    expect(bot.choosePlacement(game.activeView!, new StubRandomSource([0.999]))).toEqual(moves[moves.length - 1]);
 
     const pending = [
       { corner: new CornerCoord(0, 0), eligibleColors: ['red', 'blue'] as FlowerColor[] },
       { corner: new CornerCoord(1, 0), eligibleColors: ['red'] as FlowerColor[] },
     ];
-    const blooms = bot.chooseBlooms(game, moves[0]!, pending, new StubRandomSource([0.5, 0.5]));
+    const blooms = bot.chooseBlooms(game.activeView!, moves[0]!, pending, new StubRandomSource([0.5, 0.5]));
     expect(blooms).toHaveLength(2);
     expect(new Set(blooms.map((b) => b.color)).size).toBe(2);
 
@@ -112,9 +113,9 @@ describe('src/bots', () => {
     const gBloom = makeOrderedGame([0, 1, 2, 25]);
     gBloom.applyMove({ coord: new GridCoord(1, 0), rotation: 3 });
     gBloom.applyMove({ coord: new GridCoord(0, 1), rotation: 3 });
-    const chosenBloom = bot.choosePlacement(gBloom, rng);
+    const chosenBloom = bot.choosePlacement(gBloom.activeView!, rng);
     expect(chosenBloom).toEqual({ coord: new GridCoord(1, 1), rotation: 0 });
-    expect(bot.chooseBlooms(gBloom, chosenBloom, gBloom.eligibleBloomsFor(chosenBloom), rng)).toHaveLength(1);
+    expect(bot.chooseBlooms(gBloom.activeView!, chosenBloom, gBloom.eligibleBloomsFor(chosenBloom), rng)).toHaveLength(1);
 
     // Tie-break by neighborCount when 0 immediate blooms exist: (3,1) has 2 neighbors vs 1 on outer edges
     const gTie = makeOrderedGame([0, 1, 27, 2, 10, 26, 6, 14]);
@@ -127,7 +128,7 @@ describe('src/bots', () => {
       { corner: new CornerCoord(1, 0), color: 'red' },
     ]);
     gTie.applyMove({ coord: new GridCoord(3, 0), rotation: 0 });
-    expect(bot.choosePlacement(gTie, rng)).toEqual({ coord: new GridCoord(3, 1), rotation: 1 });
+    expect(bot.choosePlacement(gTie.activeView!, rng)).toEqual({ coord: new GridCoord(3, 1), rotation: 1 });
 
     for (let s = 1; s <= 5; s += 1) {
       expect(playBotGame(bot, s).isComplete).toBe(true);
@@ -142,10 +143,10 @@ describe('src/bots', () => {
     const gBloom = makeOrderedGame([0, 1, 2, 25]);
     gBloom.applyMove({ coord: new GridCoord(1, 0), rotation: 3 });
     gBloom.applyMove({ coord: new GridCoord(0, 1), rotation: 3 });
-    const chosen = heuristic.choosePlacement(gBloom, new SeededRandomSource(1));
+    const chosen = heuristic.choosePlacement(gBloom.activeView!, new SeededRandomSource(1));
     expect(chosen).toEqual({ coord: new GridCoord(1, 1), rotation: 0 });
     expect(
-      heuristic.chooseBlooms(gBloom, chosen, gBloom.eligibleBloomsFor(chosen), new SeededRandomSource(1)),
+      heuristic.chooseBlooms(gBloom.activeView!, chosen, gBloom.eligibleBloomsFor(chosen), new SeededRandomSource(1)),
     ).toHaveLength(1);
 
     let heuristicTotal = 0;

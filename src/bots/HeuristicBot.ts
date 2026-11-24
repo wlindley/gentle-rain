@@ -1,10 +1,10 @@
 import type { RandomSource } from '../rng';
 import { Direction } from '../game';
 import type {
+  ActiveGameView,
   BloomPlacement,
   FlowerColor,
   FrontierConstraint,
-  GameView,
   PendingCornerBloom,
   PondTile,
   Rotation,
@@ -49,8 +49,8 @@ export class HeuristicBot implements Bot {
   readonly name = 'Heuristic Bot';
   readonly description = 'Evaluates immediate blooms, unseen-tile fillability, and color scarcity.';
 
-  choosePlacement(view: GameView, rng: RandomSource): TilePlacement {
-    const tile = view.currentTile!;
+  choosePlacement(view: ActiveGameView, rng: RandomSource): TilePlacement {
+    const tile = view.currentTile;
     const priority = scarcityPriority(view.unseenTiles);
     let bestScore = Number.NEGATIVE_INFINITY;
     let best: TilePlacement[] = [];
@@ -80,7 +80,7 @@ export class HeuristicBot implements Bot {
   }
 
   chooseBlooms(
-    view: GameView,
+    view: ActiveGameView,
     _placement: TilePlacement,
     pendingCorners: readonly PendingCornerBloom[],
     _rng: RandomSource,

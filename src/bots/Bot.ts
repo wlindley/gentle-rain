@@ -1,13 +1,13 @@
 import type { RandomSource } from '../rng';
-import type { BloomPlacement, GameView, PendingCornerBloom, TilePlacement } from '../game';
+import type { ActiveGameView, BloomPlacement, PendingCornerBloom, TilePlacement } from '../game';
 
 export interface Bot {
   readonly id: string;
   readonly name: string;
   readonly description: string;
-  choosePlacement(view: GameView, rng: RandomSource): TilePlacement;
+  choosePlacement(view: ActiveGameView, rng: RandomSource): TilePlacement;
   chooseBlooms(
-    view: GameView,
+    view: ActiveGameView,
     placement: TilePlacement,
     pendingCorners: readonly PendingCornerBloom[],
     rng: RandomSource,

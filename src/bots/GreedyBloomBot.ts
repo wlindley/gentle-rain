@@ -1,5 +1,5 @@
 import type { RandomSource } from '../rng';
-import type { BloomPlacement, GameView, PendingCornerBloom, TilePlacement } from '../game';
+import type { ActiveGameView, BloomPlacement, PendingCornerBloom, TilePlacement } from '../game';
 import { BloomAssignmentSolver } from './BloomAssignmentSolver';
 import type { Bot } from './Bot';
 
@@ -8,8 +8,8 @@ export class GreedyBloomBot implements Bot {
   readonly name = 'Greedy Bloom Bot';
   readonly description = 'Maximizes immediate blooms, breaking ties by higher neighbor count.';
 
-  choosePlacement(view: GameView, rng: RandomSource): TilePlacement {
-    const tile = view.currentTile!;
+  choosePlacement(view: ActiveGameView, rng: RandomSource): TilePlacement {
+    const tile = view.currentTile;
     let bestScore = Number.NEGATIVE_INFINITY;
     let best: TilePlacement[] = [];
 
@@ -32,7 +32,7 @@ export class GreedyBloomBot implements Bot {
   }
 
   chooseBlooms(
-    _view: GameView,
+    _view: ActiveGameView,
     _placement: TilePlacement,
     pendingCorners: readonly PendingCornerBloom[],
     _rng: RandomSource,

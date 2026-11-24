@@ -4,7 +4,15 @@ import { GameResult } from './GameResult';
 import { PondTile } from './PondTile';
 import { TileCatalog } from './TileCatalog';
 import { FLOWER_COLORS } from './types';
-import type { BloomPlacement, FlowerColor, GameSnapshot, PendingCornerBloom, TilePlacement, TurnOutcome } from './types';
+import type {
+  BloomPlacement,
+  DiscardedTurnOutcome,
+  FlowerColor,
+  GameSnapshot,
+  PendingCornerBloom,
+  PlacedTurnOutcome,
+  TilePlacement,
+} from './types';
 
 export interface GameView {
   readonly board: ReadonlyBoardView;
@@ -18,6 +26,13 @@ export interface GameView {
   readonly isComplete: boolean;
   readonly score: number;
   readonly isWin: boolean;
+  eligibleBloomsFor(placement: TilePlacement): readonly PendingCornerBloom[];
+}
+
+export interface ActiveGameView extends GameView {
+  readonly isComplete: false;
+  readonly isWin: false;
+  readonly currentTile: PondTile;
 }
 export class Game implements GameView {
   private readonly _board = new Board();
@@ -54,20 +69,23 @@ export class Game implements GameView {
       turnsPlayed: this._turnNumber,
     });
   }
+  get activeView(): ActiveGameView | null {
+    return this.isComplete ? null : (this as unknown as ActiveGameView);
+  }
   toSnapshot(): GameSnapshot {
-    return {
+    const base = {
       placedTiles: [...this._board.placedTiles],
       placedBlooms: [...this._board.placedBlooms],
-      currentTile: this._currentTile,
       discardedTiles: [...this._discardedTiles],
       unplayedFlowers: Array.from(this._unplayedFlowers),
       remainingDrawCount: this.remainingDrawCount,
       turnNumber: this._turnNumber,
-      isComplete: this.isComplete,
-      isWin: this.isWin,
       score: this.score,
       bounds: { ...this._board.bounds },
     };
+    return this._currentTile
+      ? { ...base, isComplete: false, isWin: false, currentTile: this._currentTile }
+      : { ...base, isComplete: true, isWin: this.isWin, currentTile: null };
   }
   eligibleBloomsFor(placement: TilePlacement): readonly PendingCornerBloom[] {
     const tile = this.requireActiveTile();
@@ -75,7 +93,7 @@ export class Game implements GameView {
       corner, eligibleColors: adjacentColors.filter((c) => this._unplayedFlowers.has(c)),
     }));
   }
-  applyMove(placement: TilePlacement, blooms: readonly BloomPlacement[] = []): TurnOutcome {
+  applyMove(placement: TilePlacement, blooms: readonly BloomPlacement[] = []): PlacedTurnOutcome {
     const tile = this.requireActiveTile();
     const pending = this.eligibleBloomsFor(placement);
     const byCorner = new Map(pending.map((p) => [p.corner.key, p.eligibleColors]));
@@ -97,7 +115,7 @@ export class Game implements GameView {
     this.advanceTurn();
     return { kind: 'placed', tile, placement, blooms: [...blooms] };
   }
-  discardCurrentTile(): TurnOutcome {
+  discardCurrentTile(): DiscardedTurnOutcome {
     const tile = this.requireActiveTile();
     if (this._validPlacements.length > 0) throw new Error('Cannot discard when valid placements exist');
     this._discardedTiles.push(tile);

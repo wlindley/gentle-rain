@@ -22,6 +22,16 @@ export enum Direction {
 }
 
 export type Rotation = 0 | 1 | 2 | 3;
+export type NeighborCount = 1 | 2 | 3 | 4;
+
+export const ALL_DIRECTIONS: readonly Direction[] = [
+  Direction.West,
+  Direction.North,
+  Direction.East,
+  Direction.South,
+];
+
+export const ALL_ROTATIONS: readonly Rotation[] = [0, 1, 2, 3];
 
 export interface BoardBounds {
   readonly minX: number;
@@ -49,7 +59,7 @@ export interface FrontierConstraint {
     FlowerColor | null,
     FlowerColor | null,
   ];
-  readonly neighborCount: number;
+  readonly neighborCount: NeighborCount;
 }
 
 export interface CompletedCorner {
@@ -66,7 +76,7 @@ export interface PlacementPreview {
   readonly placement: TilePlacement;
   readonly completedCorners: readonly CompletedCorner[];
   readonly affectedFrontierConstraints: readonly FrontierConstraint[];
-  readonly neighborCount: number;
+  readonly neighborCount: NeighborCount;
 }
 
 export interface PendingCornerBloom {
@@ -74,25 +84,41 @@ export interface PendingCornerBloom {
   readonly eligibleColors: readonly FlowerColor[];
 }
 
-export interface GameSnapshot {
+interface BaseGameSnapshot {
   readonly placedTiles: readonly PlacedTile[];
   readonly placedBlooms: readonly BloomPlacement[];
-  readonly currentTile: PondTile | null;
   readonly discardedTiles: readonly PondTile[];
   readonly unplayedFlowers: readonly FlowerColor[];
   readonly remainingDrawCount: number;
   readonly turnNumber: number;
-  readonly isComplete: boolean;
-  readonly isWin: boolean;
   readonly score: number;
   readonly bounds: BoardBounds;
 }
 
-export type TurnOutcome =
-  | {
-      readonly kind: 'placed';
-      readonly tile: PondTile;
-      readonly placement: TilePlacement;
-      readonly blooms: readonly BloomPlacement[];
-    }
-  | { readonly kind: 'discarded'; readonly tile: PondTile };
+export interface ActiveGameSnapshot extends BaseGameSnapshot {
+  readonly isComplete: false;
+  readonly isWin: false;
+  readonly currentTile: PondTile;
+}
+
+export interface CompletedGameSnapshot extends BaseGameSnapshot {
+  readonly isComplete: true;
+  readonly isWin: boolean;
+  readonly currentTile: null;
+}
+
+export type GameSnapshot = ActiveGameSnapshot | CompletedGameSnapshot;
+
+export interface PlacedTurnOutcome {
+  readonly kind: 'placed';
+  readonly tile: PondTile;
+  readonly placement: TilePlacement;
+  readonly blooms: readonly BloomPlacement[];
+}
+
+export interface DiscardedTurnOutcome {
+  readonly kind: 'discarded';
+  readonly tile: PondTile;
+}
+
+export type TurnOutcome = PlacedTurnOutcome | DiscardedTurnOutcome;
