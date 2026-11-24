@@ -257,8 +257,18 @@ describe('Board', () => {
   });
 });
 
-describe('src/game', () => {
+describe('GameResult', () => {
+  it('computes score and isWin for victories and deck-exhaustion losses', () => {
+    const winRes = new GameResult({ placedFlowers: 8, remainingDrawCount: 5, placedTilesCount: 22, discardedTilesCount: 1, turnsPlayed: 22 });
+    expect(winRes.score).toBe(13);
+    expect(winRes.isWin).toBe(true);
+    const lossRes = new GameResult({ placedFlowers: 6, remainingDrawCount: 0, placedTilesCount: 25, discardedTilesCount: 3, turnsPlayed: 27 });
+    expect(lossRes.score).toBe(6);
+    expect(lossRes.isWin).toBe(false);
+  });
+});
 
+describe('Game', () => {
   const makeOrderedGame = (frontIds: readonly number[]): Game => {
     const all = TileCatalog.defaultCatalog().tiles;
     const frontSet = new Set(frontIds);
@@ -266,21 +276,6 @@ describe('src/game', () => {
     const catalog = new TileCatalog(ordered.map((t) => t.baseEdges));
     return Game.create(new StubRandomSource(Array.from({ length: 27 }, () => 0.9999)), catalog);
   };
-
-  it('GAME-12: Game.create shuffles deck, places initial tile at (0,0), draws currentTile, and exposes fair unseenTiles', () => {
-    const game = Game.create(new SeededRandomSource(7));
-    expect(game.board.placedTileCount).toBe(1);
-    const initial = game.board.tileAt(new GridCoord(0, 0))!.tile;
-    expect(game.currentTile).not.toBeNull();
-    expect(game.currentTile!.id).not.toBe(initial.id);
-    expect(game.remainingDrawCount).toBe(26);
-    expect(game.unseenTiles).toHaveLength(26);
-    expect(game.unseenTiles.some((t) => t.id === initial.id || t.id === game.currentTile!.id)).toBe(false);
-    expect(game.unplayedFlowers.size).toBe(8);
-    expect(game.discardedTiles).toEqual([]);
-    expect(game.turnNumber).toBe(0);
-    expect(game.isComplete).toBe(false);
-  });
 
   const setupTwoCornerGame = (extraIds: readonly number[] = []): Game => {
     const game = makeOrderedGame([0, 1, 27, 2, 10, 26, ...extraIds]);
@@ -290,62 +285,6 @@ describe('src/game', () => {
     game.applyMove({ coord: new GridCoord(2, 1), rotation: 3 });
     return game;
   };
-
-  it('GAME-13: Game.applyMove places tiles, resolves single/simultaneous blooms, and updates turn/unseen state', () => {
-    const game = setupTwoCornerGame();
-    const p = { coord: new GridCoord(1, 1), rotation: 2 as const };
-    expect(game.eligibleBloomsFor(p).map((c) => c.corner.key).sort()).toEqual(['0,0', '1,0']);
-
-    const outcome = game.applyMove(p, [
-      { corner: new CornerCoord(0, 0), color: 'pink' },
-      { corner: new CornerCoord(1, 0), color: 'red' },
-    ]);
-    expect(outcome.kind).toBe('placed');
-    expect(game.board.placedBloomCount).toBe(2);
-    expect(game.unplayedFlowers.has('pink')).toBe(false);
-    expect(game.unplayedFlowers.has('red')).toBe(false);
-    expect(game.turnNumber).toBe(5);
-    expect(game.remainingDrawCount).toBe(21);
-    expect(game.unseenTiles).toHaveLength(21);
-  });
-
-  it('GAME-14: Game.applyMove enforces bloom validity and allows unbloomed corner only when 0 eligible colors remain', () => {
-    const game = setupTwoCornerGame([6, 14]);
-    const p = { coord: new GridCoord(1, 1), rotation: 2 as const };
-    expect(() => game.applyMove(p, [])).toThrow();
-    expect(() => game.applyMove(p, [{ corner: new CornerCoord(0, 0), color: 'pink' }])).toThrow();
-    expect(() => game.applyMove(p, [
-      { corner: new CornerCoord(0, 0), color: 'pink' }, { corner: new CornerCoord(1, 0), color: 'pink' },
-    ])).toThrow();
-    expect(() => game.applyMove(p, [
-      { corner: new CornerCoord(5, 5), color: 'pink' }, { corner: new CornerCoord(1, 0), color: 'red' },
-    ])).toThrow();
-
-    game.applyMove(p, [
-      { corner: new CornerCoord(0, 0), color: 'pink' }, { corner: new CornerCoord(1, 0), color: 'red' },
-    ]);
-    game.applyMove({ coord: new GridCoord(3, 0), rotation: 0 });
-    const dead = { coord: new GridCoord(3, 1), rotation: 1 as const };
-    expect(game.eligibleBloomsFor(dead)).toEqual([{ corner: new CornerCoord(2, 0), eligibleColors: [] }]);
-    expect(() => game.applyMove(dead, [{ corner: new CornerCoord(2, 0), color: 'pink' }])).toThrow();
-    expect(game.applyMove(dead, []).kind).toBe('placed');
-    expect(game.board.bloomAt(new CornerCoord(2, 0))).toBeUndefined();
-  });
-
-  it('GAME-15: Game.discardCurrentTile discards unplaceable tile and throws when valid placements exist', () => {
-    const placeable = makeOrderedGame([0, 1]);
-    expect(placeable.validPlacements.length).toBeGreaterThan(0);
-    expect(() => placeable.discardCurrentTile()).toThrow();
-
-    const unplaceable = makeOrderedGame([0, 27]);
-    expect(unplaceable.validPlacements).toEqual([]);
-    const drawn = unplaceable.currentTile!;
-    const out = unplaceable.discardCurrentTile();
-    expect(out).toEqual({ kind: 'discarded', tile: drawn });
-    expect(unplaceable.discardedTiles).toEqual([drawn]);
-    expect(unplaceable.turnNumber).toBe(1);
-    expect(unplaceable.remainingDrawCount).toBe(25);
-  });
 
   const playToEnd = (seed: number, preferBloom: boolean): Game => {
     const game = Game.create(new SeededRandomSource(seed));
@@ -374,31 +313,99 @@ describe('src/game', () => {
     return game;
   };
 
-  it('GAME-16: Early Victory ends immediately on 8th bloom with score = 8 + remainingDrawCount and rejects further moves', () => {
-    let game: Game | undefined;
-    for (let s = 1; s <= 50; s += 1) {
-      const candidate = playToEnd(s, true);
-      if (candidate.isWin && candidate.remainingDrawCount > 0) { game = candidate; break; }
-    }
-    expect(game).toBeDefined();
-    expect(game!.isComplete).toBe(true);
-    expect(game!.isWin).toBe(true);
-    expect(game!.currentTile).toBeNull();
-    expect(game!.validPlacements).toEqual([]);
-    expect(game!.remainingDrawCount).toBeGreaterThan(0);
-    expect(game!.score).toBe(8 + game!.remainingDrawCount);
-
-    const res = game!.result!;
-    expect(res).not.toBeNull();
-    expect(res.isWin).toBe(true);
-    expect(res.placedFlowers).toBe(8);
-    expect(res.score).toBe(8 + game!.remainingDrawCount);
-    expect(() => game!.discardCurrentTile()).toThrow();
-    expect(() => game!.applyMove({ coord: new GridCoord(0, 0), rotation: 0 })).toThrow();
-    expect(() => game!.eligibleBloomsFor({ coord: new GridCoord(0, 0), rotation: 0 })).toThrow();
+  it('initializes board at (0,0), draws currentTile, and exposes fair unseenTiles', () => {
+    const game = Game.create(new SeededRandomSource(7));
+    expect(game.board.placedTileCount).toBe(1);
+    const initial = game.board.tileAt(new GridCoord(0, 0))!.tile;
+    expect(game.currentTile).not.toBeNull();
+    expect(game.currentTile!.id).not.toBe(initial.id);
+    expect(game.remainingDrawCount).toBe(26);
+    expect(game.unseenTiles).toHaveLength(26);
+    expect(game.unseenTiles.some((t) => t.id === initial.id || t.id === game.currentTile!.id)).toBe(false);
+    expect(game.unplayedFlowers.size).toBe(8);
+    expect(game.discardedTiles).toEqual([]);
+    expect(game.turnNumber).toBe(0);
+    expect(game.isComplete).toBe(false);
   });
 
-  it('GAME-17: Deck Exhaustion ends with isWin=false, remainingDrawCount=0, and score=placedFlowers', () => {
+  it('places tiles, resolves simultaneous blooms, and updates turn and unseen state', () => {
+    const game = setupTwoCornerGame();
+    const p = { coord: new GridCoord(1, 1), rotation: 2 as const };
+    expect(game.eligibleBloomsFor(p).map((c) => c.corner.key).sort()).toEqual(['0,0', '1,0']);
+
+    const outcome = game.applyMove(p, [
+      { corner: new CornerCoord(0, 0), color: 'pink' },
+      { corner: new CornerCoord(1, 0), color: 'red' },
+    ]);
+    expect(outcome.kind).toBe('placed');
+    expect(game.board.placedBloomCount).toBe(2);
+    expect(game.unplayedFlowers.has('pink')).toBe(false);
+    expect(game.unplayedFlowers.has('red')).toBe(false);
+    expect(game.turnNumber).toBe(5);
+    expect(game.remainingDrawCount).toBe(21);
+    expect(game.unseenTiles).toHaveLength(21);
+  });
+
+  it('rejects invalid, duplicate, or omitted blooms on completed corners', () => {
+    const game = setupTwoCornerGame();
+    const p = { coord: new GridCoord(1, 1), rotation: 2 as const };
+    expect(() => game.applyMove(p, [])).toThrow();
+    expect(() => game.applyMove(p, [{ corner: new CornerCoord(0, 0), color: 'pink' }])).toThrow();
+    expect(() => game.applyMove(p, [
+      { corner: new CornerCoord(0, 0), color: 'pink' }, { corner: new CornerCoord(1, 0), color: 'pink' },
+    ])).toThrow();
+    expect(() => game.applyMove(p, [
+      { corner: new CornerCoord(5, 5), color: 'pink' }, { corner: new CornerCoord(1, 0), color: 'red' },
+    ])).toThrow();
+  });
+
+  it('permits leaving a completed corner unbloomed only when 0 eligible colors remain', () => {
+    const game = setupTwoCornerGame([6, 14]);
+    game.applyMove({ coord: new GridCoord(1, 1), rotation: 2 }, [
+      { corner: new CornerCoord(0, 0), color: 'pink' }, { corner: new CornerCoord(1, 0), color: 'red' },
+    ]);
+    game.applyMove({ coord: new GridCoord(3, 0), rotation: 0 });
+    const dead = { coord: new GridCoord(3, 1), rotation: 1 as const };
+    expect(game.eligibleBloomsFor(dead)).toEqual([{ corner: new CornerCoord(2, 0), eligibleColors: [] }]);
+    expect(() => game.applyMove(dead, [{ corner: new CornerCoord(2, 0), color: 'pink' }])).toThrow();
+    expect(game.applyMove(dead, []).kind).toBe('placed');
+    expect(game.board.bloomAt(new CornerCoord(2, 0))).toBeUndefined();
+  });
+
+  it('discards unplaceable tiles and rejects discards when valid placements exist', () => {
+    const placeable = makeOrderedGame([0, 1]);
+    expect(placeable.validPlacements.length).toBeGreaterThan(0);
+    expect(() => placeable.discardCurrentTile()).toThrow();
+
+    const unplaceable = makeOrderedGame([0, 27]);
+    expect(unplaceable.validPlacements).toEqual([]);
+    const drawn = unplaceable.currentTile!;
+    const out = unplaceable.discardCurrentTile();
+    expect(out).toEqual({ kind: 'discarded', tile: drawn });
+    expect(unplaceable.discardedTiles).toEqual([drawn]);
+    expect(unplaceable.turnNumber).toBe(1);
+    expect(unplaceable.remainingDrawCount).toBe(25);
+  });
+
+  it('ends immediately on the 8th bloom with score = 8 + remainingDrawCount and rejects further actions', () => {
+    const game = playToEnd(2, true);
+    expect(game.isComplete).toBe(true);
+    expect(game.isWin).toBe(true);
+    expect(game.currentTile).toBeNull();
+    expect(game.validPlacements).toEqual([]);
+    expect(game.remainingDrawCount).toBeGreaterThan(0);
+    expect(game.score).toBe(8 + game.remainingDrawCount);
+
+    const res = game.result!;
+    expect(res.isWin).toBe(true);
+    expect(res.placedFlowers).toBe(8);
+    expect(res.score).toBe(8 + game.remainingDrawCount);
+    expect(() => game.discardCurrentTile()).toThrow();
+    expect(() => game.applyMove({ coord: new GridCoord(0, 0), rotation: 0 })).toThrow();
+    expect(() => game.eligibleBloomsFor({ coord: new GridCoord(0, 0), rotation: 0 })).toThrow();
+  });
+
+  it('ends on deck exhaustion with isWin=false, remainingDrawCount=0, and score=placedFlowers', () => {
     const game = playToEnd(1, false);
     expect(game.isComplete).toBe(true);
     expect(game.isWin).toBe(false);
@@ -408,20 +415,12 @@ describe('src/game', () => {
     expect(game.score).toBe(game.board.placedBloomCount);
 
     const res = game.result!;
-    expect(res).not.toBeNull();
     expect(res.isWin).toBe(false);
     expect(res.score).toBe(res.placedFlowers);
     expect(res.placedTilesCount + res.discardedTilesCount).toBe(28);
   });
 
-  it('GAME-18: Game.result is null until complete and Game.toSnapshot returns an immutable detached snapshot', () => {
-    const winRes = new GameResult({ placedFlowers: 8, remainingDrawCount: 5, placedTilesCount: 22, discardedTilesCount: 1, turnsPlayed: 22 });
-    expect(winRes.score).toBe(13);
-    expect(winRes.isWin).toBe(true);
-    const lossRes = new GameResult({ placedFlowers: 6, remainingDrawCount: 0, placedTilesCount: 25, discardedTilesCount: 3, turnsPlayed: 27 });
-    expect(lossRes.score).toBe(6);
-    expect(lossRes.isWin).toBe(false);
-
+  it('returns null result before completion and detached snapshots across turns', () => {
     const game = makeOrderedGame([0, 1]);
     expect(game.result).toBeNull();
     const snap0 = game.toSnapshot();
