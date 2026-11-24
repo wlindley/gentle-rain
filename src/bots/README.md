@@ -41,6 +41,7 @@ console.log(registry.bots.map((b) => b.id));
 ### Internal Architecture
 
 - **`BloomAssignmentSolver`** (`src/bots/BloomAssignmentSolver.ts`): Because a single tile placement completes at most 4 corners (each with at most 4 seam colors), exact backtracking DFS over `pendingCorners` (including the skip branch per corner) guarantees the exact maximum-cardinality distinct-color bloom assignment in microseconds, breaking ties by maximizing the sum of `colorPriority(color)`.
+- **`BotAdvisor`** (`src/bots/BotAdvisor.ts`): Exports discriminated union `BotMoveAdvice` (`{ kind: 'discard' } | { kind: 'place'; placement; blooms }`) and `adviseMove(bot, view, rng)`, shared by `GameRunner.step()` and the interactive Play Mode Bot Move Advisor.
 - **Shared Board Analysis Helpers (`BoardAnalysis.ts`)**: `countUnseenColors`, `countFrontierColors`, `tileFitsConstraint`, `countMatchingUnseen`, and `selectBestPlacement` (argmax with uniform tie-breaking) are shared across `GreedyBloomBot`, `HeuristicBot`, and `src/evolution`'s `EvolvedBot`.
 - **Zero-Clone 1-Ply Heuristic Evaluation (`GreedyBloomBot`, `HeuristicBot`)**: Bots receive a narrowed `ActiveGameView` (guaranteeing non-null `currentTile`) and evaluate candidates via `view.board.previewPlacement` and `view.eligibleBloomsFor` without cloning `Board`.
 - **Open/Closed Extensibility (`BotRegistry`)**: Provides `bots`, `has(id)`, `find(id)`, `require(id)`, and `register(bot)` so new strategies can be added without modifying simulation or UI code.

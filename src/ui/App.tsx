@@ -5,13 +5,14 @@ import { BoardInspectorDialog } from './BoardInspectorDialog';
 import { ControlBar } from './ControlBar';
 import { EvolutionPanel } from './EvolutionPanel';
 import { LeaderboardPanel } from './LeaderboardPanel';
+import { PlayPanel } from './PlayPanel';
 import { SimulationGridCanvas } from './SimulationGridCanvas';
 import { StatsPanel } from './StatsPanel';
 import { useSimulationController } from './useSimulationController';
 
 export function App() {
   const sim = useSimulationController();
-  const [activeTab, setActiveTab] = useState<'simulator' | 'evolve'>('simulator');
+  const [activeTab, setActiveTab] = useState<'play' | 'simulator' | 'evolve'>('simulator');
   const [inspected, setInspected] = useState<{ title: string; snapshot: GameSnapshot } | null>(null);
 
   const handleSendToSimulator = (genome: Genome, evaluation: GenomeEvaluation | null) => {
@@ -25,12 +26,17 @@ export function App() {
         <div>
           <h1>A Gentle Rain</h1>
           <p>
-            {activeTab === 'simulator'
-              ? `Parallel Monte Carlo Bot Simulator · ${sim.activeBot.description}`
-              : 'Multi-Core Genetic Algorithm Bot Optimizer · Maximize 4×mean + median + 0.5×p95'}
+            {activeTab === 'play'
+              ? 'Interactive Solitaire Play · Place tiles, bloom all 8 flowers, or ask a Bot Advisor for hints'
+              : activeTab === 'simulator'
+                ? `Parallel Monte Carlo Bot Simulator · ${sim.activeBot.description}`
+                : 'Multi-Core Genetic Algorithm Bot Optimizer · Maximize 4×mean + median + 0.5×p95'}
           </p>
         </div>
         <nav className="tab-bar" aria-label="Workspace views">
+          <button type="button" className={activeTab === 'play' ? 'active' : ''} onClick={() => { sim.pause(); setActiveTab('play'); }}>
+            Play
+          </button>
           <button type="button" className={activeTab === 'simulator' ? 'active' : ''} onClick={() => setActiveTab('simulator')}>
             Simulator
           </button>
@@ -39,7 +45,9 @@ export function App() {
           </button>
         </nav>
       </header>
-      {activeTab === 'evolve' ? (
+      {activeTab === 'play' ? (
+        <PlayPanel bots={sim.bots} />
+      ) : activeTab === 'evolve' ? (
         <EvolutionPanel onSendToSimulator={handleSendToSimulator} />
       ) : (
         <>

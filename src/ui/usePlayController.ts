@@ -159,7 +159,7 @@ export function usePlayController(bots: readonly Bot[]) {
     advisorBotId, advisorBot, showHint, autoShowHint, advice, botBenchmark,
     startNewGame, replaySeed: () => startNewGame(seed),
     rotatePreview, selectRotation, clickCoord, chooseBloom, confirmSelection,
-    cancelSelection: () => setTurnState({ kind: 'browsing', previewRotation: 0 }),
+    cancelSelection: () => setTurnState((s) => (s.kind === 'selected' ? { kind: 'browsing', previewRotation: 0 } : s)),
     discardTile, applyBotAdvice,
     toggleHint: () => setShowHint((h) => !h),
     setAutoShowHint: (on: boolean) => { setAutoShowHintState(on); if (on) setShowHint(true); },

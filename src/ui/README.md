@@ -30,7 +30,8 @@ npm run preview  # Preview the production bundle locally
 | File | Responsibility |
 | :--- | :--- |
 | `palette.ts` | Exhaustive `Record<FlowerColor, FlowerStyle>` lotus color palette and pond theme tokens. |
-| `boardRenderer.ts` | Pure Canvas 2D renderer (`renderBoardSnapshot`) drawing tiles, edge petals, quarter-circle cutouts, and glowing blooms. |
+| `boardRenderer.ts` | Pure Canvas 2D renderer (`renderBoardSnapshot`, `computeBoardLayout`, `canvasToGrid`, `drawTile`, `drawBloom`) shared across mini-grids, inspector, and interactive play. |
+| `usePlayController.ts` / `InteractiveBoardCanvas.tsx` / `PlayPanel.tsx` | Interactive human Play Mode tab with `PlayTurnState` state machine, click/rotate/bloom placement, keyboard shortcuts (`Q/E/Enter/Esc/H`), non-mutating Bot Move Advisor (`adviseMove`), and same-seed bot comparison. |
 | `SimulationGridCanvas.tsx` | Responsive HiDPI `<canvas>` rendering `readonly SlotView[]` with click-to-slot hit-testing. |
 | `ControlBar.tsx` | Controlled inputs for bot, game count, grid density, speed, fixed seed, Run/Pause/Reset, and Compare All Bots. |
 | `StatsPanel.tsx` | Live KPI cards, Score Distribution & Blooms Placed histograms, and Best/Worst inspect buttons. |
