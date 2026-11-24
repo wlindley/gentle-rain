@@ -1,3 +1,5 @@
+import { JsonKeyStore, type StorageLike } from './JsonKeyStore';
+
 export interface BotRunRecord {
   readonly id: string;
   readonly botId: string;
@@ -45,28 +47,21 @@ export class InMemoryScoreStore implements ScoreStore {
 }
 
 export class LocalStorageScoreStore implements ScoreStore {
-  constructor(
-    private readonly storageKey = 'gentle-rain:bot-runs:v1',
-    private readonly storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> = globalThis.localStorage,
-  ) {}
+  private readonly store: JsonKeyStore<BotRunRecord[]>;
+
+  constructor(storageKey = 'gentle-rain:bot-runs:v1', storage?: StorageLike) {
+    this.store = new JsonKeyStore<BotRunRecord[]>(storageKey, storage);
+  }
 
   loadAll(): readonly BotRunRecord[] {
-    const raw = this.storage.getItem(this.storageKey);
-    if (raw === null) return [];
-    try {
-      const parsed: unknown = JSON.parse(raw);
-      return Array.isArray(parsed) ? (parsed as BotRunRecord[]) : [];
-    } catch {
-      return [];
-    }
+    return this.store.read((parsed) => (Array.isArray(parsed) ? (parsed as BotRunRecord[]).map(cloneRecord) : null)) ?? [];
   }
 
   save(record: BotRunRecord): void {
-    const updated = [...this.loadAll(), cloneRecord(record)];
-    this.storage.setItem(this.storageKey, JSON.stringify(updated));
+    this.store.write([...this.loadAll(), cloneRecord(record)]);
   }
 
   clear(): void {
-    this.storage.removeItem(this.storageKey);
+    this.store.clear();
   }
 }

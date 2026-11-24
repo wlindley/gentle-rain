@@ -5,6 +5,7 @@ export class SimulationStats {
   private readonly _scores: number[] = [];
   private readonly _bloomCounts: number[] = [];
   private _totalDiscards = 0;
+  private _sortedCache: number[] | null = null;
 
   constructor(results: readonly GameResult[] = []) {
     for (const r of results) this.record(r);
@@ -19,6 +20,7 @@ export class SimulationStats {
     this._scores.push(result.score);
     this._bloomCounts.push(result.placedFlowers);
     this._totalDiscards += result.discardedTilesCount;
+    this._sortedCache = null;
   }
 
   get winCount(): number { return this._bloomCounts.filter((b) => b === FLOWER_COLORS.length).length; }
@@ -53,7 +55,10 @@ export class SimulationStats {
     return hist;
   }
 
-  private sortedScores(): number[] { return [...this._scores].sort((a, b) => a - b); }
+  private sortedScores(): readonly number[] {
+    this._sortedCache ??= [...this._scores].sort((a, b) => a - b);
+    return this._sortedCache;
+  }
   private mean(values: readonly number[]): number {
     return values.length === 0 ? 0 : values.reduce((a, b) => a + b, 0) / values.length;
   }

@@ -3,6 +3,14 @@ import type { TileCatalog } from '../game';
 import { SimulationSession } from './SimulationSession';
 import { SimulationStats } from './SimulationStats';
 
+export interface TournamentConfig {
+  readonly bots: readonly Bot[];
+  readonly targetGames: number;
+  readonly parallelSlots: number;
+  readonly baseSeed: number;
+  readonly catalog?: TileCatalog;
+}
+
 export interface TournamentSummary {
   readonly bot: Bot;
   readonly stats: SimulationStats;
@@ -11,13 +19,8 @@ export interface TournamentSummary {
 export class TournamentRunner {
   readonly sessions: readonly SimulationSession[];
 
-  constructor(
-    bots: readonly Bot[],
-    targetGames: number,
-    parallelSlots: number,
-    baseSeed: number,
-    catalog?: TileCatalog,
-  ) {
+  constructor(config: TournamentConfig) {
+    const { bots, targetGames, parallelSlots, baseSeed, catalog } = config;
     if (bots.length === 0) {
       throw new RangeError('TournamentRunner requires at least one bot');
     }

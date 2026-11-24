@@ -160,7 +160,12 @@ export function App() {
   const handleCompareAll = () => {
     const runSeed = useFixedSeed ? seed : randomSeed();
     setIsRunning(false);
-    tournamentRef.current = new TournamentRunner(registry.bots, targetGames, Math.min(parallelSlots, 16), runSeed);
+    tournamentRef.current = new TournamentRunner({
+      bots: registry.bots,
+      targetGames,
+      parallelSlots: Math.min(parallelSlots, 16),
+      baseSeed: runSeed,
+    });
     setTournamentSeed(runSeed);
     setTournamentSummaries(tournamentRef.current.rankedSummaries);
     setIsTournamentRunning(true);

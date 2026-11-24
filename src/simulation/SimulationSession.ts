@@ -100,7 +100,7 @@ export class SimulationSession {
   }
 
   private finishSlot(slot: ActiveSlot): void {
-    this._stats.record(slot.runner.game.result!);
+    this._stats.record(slot.runner.result!);
     const snap = slot.runner.toSnapshot();
     if (!this._bestSnapshot || snap.score > this._bestSnapshot.score) this._bestSnapshot = snap;
     if (!this._worstSnapshot || snap.score < this._worstSnapshot.score) this._worstSnapshot = snap;

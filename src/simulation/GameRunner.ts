@@ -18,6 +18,7 @@ export class GameRunner {
   }
 
   get isComplete(): boolean { return this.game.isComplete; }
+  get result(): GameResult | null { return this.game.result; }
 
   step(): TurnOutcome | null {
     const view = this.game.activeView;

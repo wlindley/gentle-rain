@@ -237,8 +237,8 @@ describe('src/simulation', () => {
 
   it('SIM-07: TournamentRunner runs all bots on identical seeds and ranks summaries by meanScore descending', () => {
     const bots = BotRegistry.createDefault().bots;
-    const tournament = new TournamentRunner(bots, 20, 4, 2026);
-    expect(() => new TournamentRunner([], 10, 2, 1)).toThrow();
+    const tournament = new TournamentRunner({ bots, targetGames: 20, parallelSlots: 4, baseSeed: 2026 });
+    expect(() => new TournamentRunner({ bots: [], targetGames: 10, parallelSlots: 2, baseSeed: 1 })).toThrow();
     expect(tournament.sessions).toHaveLength(3);
     expect(tournament.isComplete).toBe(false);
 
